@@ -38,7 +38,7 @@ router = APIRouter()
 class GenerateEmailTemplateRequest(BaseModel):
     campaign_id: int
     user_prompt: str
-    your_company_name: Optional[str] = "Your Company"
+    # your_company_name: Optional[str] = "Your Company" # Removed, will use current_user's profile
     contact_id_for_preview: Optional[int] = None
 
 # Note: EmailTemplateResponse is assumed to be defined elsewhere,
@@ -101,10 +101,11 @@ async def generate_email_template_endpoint(
 
 
     try:
+        # Pass the current_user ORM object to the email generation service
         generated_subject, generated_body = await generate_personalized_email(
             user_core_prompt=request.user_prompt,
-            contact_data=contact_data_for_llm, # Empty dict if no contact_id_for_preview
-            your_company_name=request.your_company_name
+            contact_data=contact_data_for_llm,
+            current_user=current_user # Pass the authenticated user object
             # API key is handled by generate_personalized_email internally
         )
     except LLMIntegrationError as e:

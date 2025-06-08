@@ -8,18 +8,36 @@ from sqlalchemy import select, update
 # For example, in src.models.user_models and src.schemas.user_schemas
 try:
     from src.models.user_models import User # ORM Model
-    # Pydantic schemas for creation and update
-    # UserCreateDB is internal for creating user with hashed_password
+    # Pydantic schemas for creation and update, expected to be defined in user_models.py or schemas.user_schemas
+    # These should now include user_role and user_company_name
     from src.schemas.user_schemas import UserCreateDB, UserUpdate
 except ImportError:
     # Placeholders for robustness if actual models/schemas are not found
-    class User: id: int; email: str; full_name: Optional[str]; hashed_password: str # Add all fields used
+    # These placeholders should reflect the fields used by the functions below,
+    # including the new user_role and user_company_name.
+    class User:
+        id: int; email: str; full_name: Optional[str]; hashed_password: str
+        user_role: Optional[str]; user_company_name: Optional[str] # Added new fields
+
     class UserCreateDB(Type):
         email: str; hashed_password: str; full_name: Optional[str] = None
-        def model_dump(self): return {"email": self.email, "hashed_password": self.hashed_password, "full_name": self.full_name}
+        user_role: Optional[str] = None; user_company_name: Optional[str] = None # Added
+        def model_dump(self): return {
+            "email": self.email, "hashed_password": self.hashed_password,
+            "full_name": self.full_name, "user_role": self.user_role,
+            "user_company_name": self.user_company_name
+        }
+
     class UserUpdate(Type):
         full_name: Optional[str] = None
-        def model_dump(self, exclude_unset=True): return {"full_name": self.full_name} if self.full_name is not None else {}
+        user_role: Optional[str] = None # Added
+        user_company_name: Optional[str] = None # Added
+        def model_dump(self, exclude_unset=True):
+            data = {}
+            if self.full_name is not None: data["full_name"] = self.full_name
+            if self.user_role is not None: data["user_role"] = self.user_role
+            if self.user_company_name is not None: data["user_company_name"] = self.user_company_name
+            return data
 
 
 async def db_get_user_by_email(db: Session, email: str) -> Optional[User]:

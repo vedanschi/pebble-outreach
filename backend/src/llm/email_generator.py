@@ -12,6 +12,17 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # from openai import OpenAI # Ensure this import is uncommented when using actual API
 
+# Assuming User ORM model is importable for type hinting
+try:
+    from src.models.user_models import User as UserORM
+except ImportError:
+    # Placeholder for User ORM model if actual import fails
+    class UserORM: # type: ignore
+        full_name: Optional[str] = "Sender Name"
+        user_role: Optional[str] = "Team Member"
+        user_company_name: Optional[str] = "Our Company"
+
+
 class LLMIntegrationError(Exception):
     """Custom exception for LLM integration issues."""
     pass
@@ -19,27 +30,29 @@ class LLMIntegrationError(Exception):
 def _construct_llm_prompt(
     user_core_prompt: str,
     contact_data: Dict[str, str],
-    your_company_name: str = "Our Company" # Default, should be configurable
+    current_user: UserORM
 ) -> str:
     """
-    Constructs a detailed prompt for the LLM to generate a personalized email.
+    Constructs a detailed prompt for the LLM to generate a personalized email,
+    incorporating sender's details from the current_user object.
     """
+    user_full_name = current_user.full_name or "a team member"
+    user_company_name = current_user.user_company_name or "our company"
+    user_role = current_user.user_role
 
-    # These are examples; actual placeholders should match contact_data keys
-    # personalization_details = "\n".join(
-    #     f"- {key.replace('_', ' ').title()}: {{{key}}}" for key in contact_data.keys()
-    # ) # This line was for template-based generation, not direct use by LLM.
+    sender_intro = f"The email is from {user_full_name}"
+    if user_role:
+        sender_intro += f", {user_role}"
+    sender_intro += f" at {user_company_name}."
 
-    # Example system message. This can be fine-tuned significantly.
     system_message = (
         "You are an expert marketing assistant. Your task is to write a professional, concise, and engaging "
         "outreach email. The email should be personalized for the recipient using the provided contact data. "
-        "Generate a suitable subject line and the email body. Ensure the tone is appropriate for a first contact."
-        "Do not use placeholders like {{first_name}} in the final email, instead, use the actual values provided."
-        "The email is from {your_company_name}."
+        "Generate a suitable subject line and the email body. Ensure the tone is appropriate for a first contact. "
+        "Do not use placeholders like {{first_name}} in the final email; instead, use the actual values provided from the contact data. "
+        f"{sender_intro}" # Incorporate sender's details
     )
 
-    # Providing the contact data directly in the prompt for the LLM to use.
     contact_context = "### Contact Data for Personalization:\n"
     for key, value in contact_data.items():
         contact_context += f"- {key.replace('_', ' ').title()}: {value}\n"
@@ -59,16 +72,15 @@ Based on the user's request and the contact data, generate:
 
 Example of how to use contact data: If contact_data has 'first_name: John', use 'John' in the email, not '{{first_name}}'.
 """
-    # We need to format your_company_name into the system_message part of the prompt.
-    # The **contact_data is not used by .format() here as data is already in contact_context.
-    return full_prompt.format(your_company_name=your_company_name)
+    # No .format() needed for sender details as they are directly embedded in system_message
+    return full_prompt
 
 
 async def generate_personalized_email(
     user_core_prompt: str,
     contact_data: Dict[str, str], # e.g., {"first_name": "John", "company_name": "Acme Corp", ...}
-    api_key: Optional[str] = None,
-    your_company_name: str = "Our Company"
+    current_user: UserORM, # Pass the full User ORM object
+    api_key: Optional[str] = None
 ) -> Tuple[str, str]:
     """
     Generates a personalized email subject and body using an LLM.
@@ -76,8 +88,8 @@ async def generate_personalized_email(
     Args:
         user_core_prompt: The user's high-level instruction for the email.
         contact_data: A dictionary containing personalization data for the contact.
+        current_user: The ORM model instance of the authenticated user sending the email.
         api_key: The LLM API key. If None, it will try to use a pre-configured key (e.g., env var).
-        your_company_name: The name of the company sending the email.
 
     Returns:
         A tuple (subject, body).
@@ -89,18 +101,16 @@ async def generate_personalized_email(
     # In a real app, api_key would be fetched securely if not provided.
     current_api_key = api_key or OPENAI_API_KEY
     if not current_api_key:
-        # In a real application, you might have a fallback or a clearer error for the user.
-        # For now, we'll simulate if no key is found, but log a warning.
         print("Warning: OPENAI_API_KEY not found. Using simulated LLM response.")
-        # Fallback to simulation if API key is not available
-        return _simulate_llm_response(user_core_prompt, contact_data, your_company_name)
+        return _simulate_llm_response(user_core_prompt, contact_data, current_user)
 
     # client = OpenAI(api_key=current_api_key) # Uncomment when using actual API
 
-    prompt_to_llm = _construct_llm_prompt(user_core_prompt, contact_data, your_company_name)
+    prompt_to_llm = _construct_llm_prompt(user_core_prompt, contact_data, current_user)
 
     print("\n--- Attempting LLM API Call (Commented Out) ---")
-    print("Prompt constructed. Length:", len(prompt_to_llm))
+    # print(f"Generated Prompt for LLM:\n{prompt_to_llm}") # For debugging, can be very verbose
+    print(f"Prompt constructed. Length: {len(prompt_to_llm)}")
     print("------------------------------------\n")
 
     generated_text = ""
@@ -124,15 +134,14 @@ async def generate_personalized_email(
     #     # Log the error for debugging purposes
     #     print(f"LLM API call error: {e}") # Consider using proper logging
     #     # Depending on the error, you might want to retry or use a fallback.
-    #     # For this subtask, we'll fall back to simulation if the (commented out) call fails.
     #     print("Falling back to simulated LLM response due to (simulated) API error.")
-    #     return _simulate_llm_response(user_core_prompt, contact_data, your_company_name)
+    #     return _simulate_llm_response(user_core_prompt, contact_data, current_user)
     # =======================================================
 
     # If the actual API call is commented out, we must use simulation:
     if not generated_text: # This will be true if the above block is commented out
         print("Using simulated LLM response as the API call block is commented out.")
-        return _simulate_llm_response(user_core_prompt, contact_data, your_company_name)
+        return _simulate_llm_response(user_core_prompt, contact_data, current_user)
 
     # --- Parse the generated text to extract subject and body ---
     subject = "Default Subject - Check LLM Output"
@@ -187,29 +196,40 @@ async def generate_personalized_email(
     return subject, body
 
 
-def _simulate_llm_response(user_core_prompt: str, contact_data: Dict[str, str], your_company_name: str) -> Tuple[str, str]:
+def _simulate_llm_response(user_core_prompt: str, contact_data: Dict[str, str], current_user: UserORM) -> Tuple[str, str]:
     """Provides a simulated LLM response for testing without making an actual API call."""
-    print(f"Simulating LLM response for: {contact_data.get('email', 'N/A')}")
-    subject = f"Personalized Intro: {user_core_prompt[:30]}... for {contact_data.get('company_name', 'Your Company')}"
+    user_full_name = current_user.full_name or "[Your Name/Signature]"
+    user_company_name = current_user.user_company_name or "Our Company"
+
+    print(f"Simulating LLM response for contact: {contact_data.get('email', 'N/A')}, from user: {user_full_name} at {user_company_name}")
+
+    subject = f"Regarding {user_core_prompt[:20]}... for {contact_data.get('company_name', 'your company')}"
     body = f"""Hi {contact_data.get('first_name', 'Valued Professional')},
 
 I hope this email finds you well.
 
-I'm writing to you from {your_company_name}. We noticed your work at {contact_data.get('company_name', 'your company')} and were particularly interested in your role as {contact_data.get('job_title', 'a key player in your industry')}.
+I'm {user_full_name}, writing to you from {user_company_name}. We noticed your work at {contact_data.get('company_name', 'your company')} and were particularly interested in your role as {contact_data.get('job_title', 'a key player in your industry')}.
 
-Regarding your interest: "{user_core_prompt}", we offer solutions that could be highly beneficial. For example, our SuperWidget can help you achieve significant time savings.
+My core message is about: "{user_core_prompt}". We believe our solutions in this area could be highly beneficial for you.
 
-Would you be available for a brief 15-minute chat next week to discuss how {your_company_name} can specifically help {contact_data.get('company_name', 'your team')}?
+Would you be available for a brief 15-minute chat next week to discuss how {user_company_name} can specifically help {contact_data.get('company_name', 'your team')}?
 
 Best regards,
-[Your Name/Signature]
-{your_company_name}
+{user_full_name}
+{current_user.user_role + ", " if current_user.user_role else ""}{user_company_name}
 """
     return subject, body
 
 
 async def example_llm_usage():
     """Example of how generate_personalized_email might be called."""
+    # Mock User ORM object
+    sample_user = UserORM()
+    sample_user.full_name = "Manthan"
+    sample_user.user_role = "Founder"
+    sample_user.user_company_name = "23Ventures"
+
+
     sample_user_prompt = "Introduce our new SuperWidget product. It's revolutionary and saves 50% time."
     sample_contact = {
         "first_name": "Alice",
@@ -222,11 +242,11 @@ async def example_llm_usage():
 
     print(f"--- Running LLM Email Generation Example for {sample_contact['email']} ---")
     try:
-        # In a real app, API key would be handled more securely
         subject, body = await generate_personalized_email(
-            sample_user_prompt,
-            sample_contact,
-            your_company_name="My Awesome Startup Inc."
+            user_core_prompt=sample_user_prompt,
+            contact_data=sample_contact,
+            current_user=sample_user
+            # api_key="YOUR_OPENAI_KEY" # Optionally pass key here
         )
         print(f"\nGenerated Subject: {subject}")
         print(f"\nGenerated Body:\n{body}")

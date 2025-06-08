@@ -15,15 +15,24 @@ try:
     # For production, this MUST be moved to environment variables or a secure config.
 except ImportError:
     # Simplified Placeholders for robustness during development if imports fail
-    class UserORM: id: int; email: str; full_name: Optional[str]; hashed_password: str
-    class UserCreate: email: str; password: str; full_name: Optional[str] = None
-    class UserResponse: id: int; email: str; full_name: Optional[str] = None
+    # Ensure UserCreate and UserCreateDB placeholders reflect new fields if actual import fails
+    class UserORM: id: int; email: str; full_name: Optional[str]; hashed_password: str; user_role: Optional[str]; user_company_name: Optional[str]
+    class UserCreate:
+        email: str; password: str; full_name: Optional[str] = None
+        user_role: Optional[str] = None; user_company_name: Optional[str] = None # Added
+    class UserResponse:
+        id: int; email: str; full_name: Optional[str] = None
+        user_role: Optional[str] = None; user_company_name: Optional[str] = None # Added
     class Token: access_token: str; token_type: str
-    class UserCreateDB: email: str; hashed_password: str; full_name: Optional[str] = None
+    class UserCreateDB:
+        email: str; hashed_password: str; full_name: Optional[str] = None
+        user_role: Optional[str] = None; user_company_name: Optional[str] = None # Added
 
     async def db_get_user_by_email(db: Session, email: str) -> Optional[UserORM]: return None
     async def db_create_user(db: Session, user_create_data: UserCreateDB) -> UserORM:
-        return UserORM(id=1, email=user_create_data.email, full_name=user_create_data.full_name, hashed_password="hashed") # type: ignore
+        return UserORM(id=1, email=user_create_data.email, full_name=user_create_data.full_name,
+                       hashed_password="hashed", user_role=user_create_data.user_role,
+                       user_company_name=user_create_data.user_company_name) # type: ignore
     def get_password_hash(password: str) -> str: return "hashed_" + password
     def verify_password(plain_password: str, hashed_password: str) -> bool: return True
     def create_access_token(data: dict) -> str: return "fake_jwt_token_for_" + data.get("sub","unknown")
@@ -49,15 +58,21 @@ async def signup_user(user_create: UserCreate, db: Session) -> UserResponse:
     user_create_db_data = UserCreateDB(
         email=user_create.email,
         hashed_password=hashed_password,
-        full_name=user_create.full_name
+        full_name=user_create.full_name,
+        user_role=getattr(user_create, 'user_role', None), # getattr for safety if Pydantic model isn't updated
+        user_company_name=getattr(user_create, 'user_company_name', None) # Pass new fields
     )
 
     created_user_orm = await db_create_user(db, user_create_data=user_create_db_data)
 
+    # UserResponse should also be updated to include these fields if they are to be returned
+    # This was done in the previous subtask for src.models.user_models.UserResponse
     return UserResponse(
         id=created_user_orm.id,
         email=created_user_orm.email,
-        full_name=created_user_orm.full_name
+        full_name=created_user_orm.full_name,
+        user_role=getattr(created_user_orm, 'user_role', None),
+        user_company_name=getattr(created_user_orm, 'user_company_name', None)
     )
 
 
