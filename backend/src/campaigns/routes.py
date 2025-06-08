@@ -23,10 +23,18 @@ try:
     )
     from src.schemas.contact_schemas import ContactResponse
     from src.schemas.email_template_schemas import EmailTemplateResponse
+
+    # Import the new sending service
+    from .sending_service import process_and_send_campaign, CampaignSendingError
+    # For SMTP config - will be mocked or loaded from settings
+    from src.core.config import settings # Assuming settings are loaded here
 except ImportError as e:
     print(f"Error importing modules for campaigns/routes.py: {e}. Using placeholder types.")
     # Define placeholders if imports fail
     class BaseModel: pass
+    class CampaignSendingError(Exception): pass
+    async def process_and_send_campaign(campaign_id: int, db: Session, smtp_config: dict): return 0,0
+    class settings: SMTP_HOST: str = "localhost"; SMTP_PORT: int = 1025; SMTP_USER: Optional[str] = None; SMTP_PASSWORD: Optional[str] = None; SMTP_SENDER_EMAIL: str = "noreply@example.com"; SMTP_USE_TLS: bool = False
     class User: id: int
     class Campaign: pass
     class Contact: pass
@@ -186,5 +194,62 @@ async def delete_campaign(
 #     contacts: List[ContactResponse] = []
 #     email_templates: List[EmailTemplateResponse] = []
 #     # model_config = {"from_attributes": True} # if CampaignResponse doesn't have it already
+
+
+# --- Campaign Sending Endpoint ---
+class CampaignSendResponse(BaseModel):
+    message: str
+    successful_sends: int
+    failed_sends: int
+
+@router.post("/{campaign_id}/send", response_model=CampaignSendResponse)
+async def send_campaign_emails(
+    campaign_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Initiates the sending of a campaign.
+    Fetches contacts, personalizes emails, and sends them.
+    """
+    # Ensure the current user owns this campaign before sending
+    campaign = get_campaign_or_404(campaign_id, db, current_user.id)
+    if not campaign: # Should be handled by get_campaign_or_404, but defensive check
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Campaign not found or not authorized.")
+
+    # Retrieve SMTP configuration (e.g., from application settings or environment variables)
+    # For this subtask, we can mock it or assume it's loaded via a settings object
+    smtp_config = {
+        "host": settings.SMTP_HOST,
+        "port": settings.SMTP_PORT,
+        "username": settings.SMTP_USER,
+        "password": settings.SMTP_PASSWORD,
+        "use_tls": settings.SMTP_USE_TLS,
+        "sender_email": settings.SMTP_SENDER_EMAIL, # Or a campaign-specific sender
+        "timeout": 10
+    }
+    if not smtp_config["host"] or not smtp_config["sender_email"]:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="SMTP server settings are not configured."
+        )
+
+    try:
+        successful, failed = await process_and_send_campaign(
+            campaign_id=campaign_id,
+            db=db,
+            smtp_config=smtp_config
+        )
+        return CampaignSendResponse(
+            message=f"Campaign {campaign_id} processing completed.",
+            successful_sends=successful,
+            failed_sends=failed
+        )
+    except CampaignSendingError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        # Log the exception e
+        print(f"Unexpected error sending campaign {campaign_id}: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An unexpected error occurred while sending the campaign.")
 
 ```

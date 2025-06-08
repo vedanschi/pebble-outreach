@@ -1,20 +1,58 @@
-# src/users/service.py
-# This file would interact with the database (Users table)
+# backend/src/users/service.py
+from sqlalchemy.orm import Session
+from fastapi import HTTPException, status
+from typing import Optional
 
-# Placeholder for database interaction
-# class Database:
-#     def get_user_by_id(self, user_id: int): pass
-# db = Database()
+try:
+    from src.models.user_models import User as UserORM, UserResponse, UserUpdate
+    from .db_operations import db_get_user_by_id, db_update_user
+except ImportError:
+    # Placeholders
+    class UserORM: id: int; email: str; full_name: Optional[str]
+    class UserResponse: id: int; email: str; full_name: Optional[str]
+    class UserUpdate: full_name: Optional[str] = None
+    async def db_get_user_by_id(db: Session, user_id: int) -> Optional[UserORM]:
+        if user_id == 1: return UserORM(id=1, email="user@example.com", full_name="Test User") # type: ignore
+        return None
+    async def db_update_user(db: Session, user_id: int, user_update_data: UserUpdate) -> Optional[UserORM]:
+        if user_id == 1: return UserORM(id=1, email="user@example.com", full_name=user_update_data.full_name or "Test User Updated") # type: ignore
+        return None
 
-async def get_current_user_profile(user_id: int) -> dict:
+
+async def get_user_profile(user_id: int, db: Session) -> UserResponse:
     """
-    Retrieves the profile of the currently authenticated user.
-    1. Fetch user details from the database using user_id (from JWT).
-    2. Return user information (excluding sensitive data like password hash).
+    Retrieves the profile of a user by their ID.
     """
-    # user = db.get_user_by_id(user_id=user_id)
-    # if not user:
-    #     raise ValueError("User not found")
-    # return {"id": user.id, "email": user.email, "full_name": user.full_name}
-    print(f"Placeholder: Getting profile for user_id: {user_id}")
-    return {"id": user_id, "email": "user@example.com", "full_name": "Test User", "message": "User profile logic placeholder"}
+    user_orm = await db_get_user_by_id(db, user_id=user_id)
+    if not user_orm:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+    return UserResponse(
+        id=user_orm.id,
+        email=user_orm.email,
+        full_name=user_orm.full_name
+    )
+
+async def update_user_profile(
+    user_id: int,
+    user_update: UserUpdate,
+    db: Session
+) -> UserResponse:
+    """
+    Updates the profile of a user by their ID.
+    """
+    updated_user_orm = await db_update_user(db, user_id=user_id, user_update_data=user_update)
+
+    if not updated_user_orm:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, # Or 400 if update data was invalid, though db_update_user handles not found
+            detail="User not found or update failed",
+        )
+
+    return UserResponse(
+        id=updated_user_orm.id,
+        email=updated_user_orm.email,
+        full_name=updated_user_orm.full_name
+    )
