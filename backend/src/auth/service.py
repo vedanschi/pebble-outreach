@@ -1,20 +1,44 @@
-# src/auth/service.py
-# This file would interact with the database (Users table)
-# and use security.py and jwt_handler.py
+# backend/src/auth/service.py
+from sqlalchemy.orm import Session
+from fastapi import HTTPException, status, Depends # Added Depends for OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordRequestForm # For login form data
+from typing import Optional
 
-# from ..models.user_models import UserCreate, UserLogin # Relative import might fail in simple execution
-# For subtask, assume models are accessible or define simplified versions if needed.
-# from .security import get_password_hash, verify_password
-# from .jwt_handler import create_access_token
+# Assuming models are structured in src.models and can be imported
+try:
+    from src.models.user_models import User as UserORM, UserCreate, UserResponse, Token # User is ORM, others Pydantic
+    from src.schemas.user_schemas import UserCreateDB # Internal Pydantic for DB creation
+    from src.users.db_operations import db_get_user_by_email, db_create_user
+    from .security import get_password_hash, verify_password
+    from .jwt_handler import create_access_token
+    # Note on jwt_handler.py: JWT_SECRET is currently hardcoded.
+    # For production, this MUST be moved to environment variables or a secure config.
+except ImportError:
+    # Simplified Placeholders for robustness during development if imports fail
+    # Ensure UserCreate and UserCreateDB placeholders reflect new fields if actual import fails
+    class UserORM: id: int; email: str; full_name: Optional[str]; hashed_password: str; user_role: Optional[str]; user_company_name: Optional[str]
+    class UserCreate:
+        email: str; password: str; full_name: Optional[str] = None
+        user_role: Optional[str] = None; user_company_name: Optional[str] = None # Added
+    class UserResponse:
+        id: int; email: str; full_name: Optional[str] = None
+        user_role: Optional[str] = None; user_company_name: Optional[str] = None # Added
+    class Token: access_token: str; token_type: str
+    class UserCreateDB:
+        email: str; hashed_password: str; full_name: Optional[str] = None
+        user_role: Optional[str] = None; user_company_name: Optional[str] = None # Added
 
-# Placeholder for database interaction object/functions
-# class Database:
-#     def get_user_by_email(self, email: str): pass
-#     def create_user(self, user_data: dict): pass
-# db = Database()
+    async def db_get_user_by_email(db: Session, email: str) -> Optional[UserORM]: return None
+    async def db_create_user(db: Session, user_create_data: UserCreateDB) -> UserORM:
+        return UserORM(id=1, email=user_create_data.email, full_name=user_create_data.full_name,
+                       hashed_password="hashed", user_role=user_create_data.user_role,
+                       user_company_name=user_create_data.user_company_name) # type: ignore
+    def get_password_hash(password: str) -> str: return "hashed_" + password
+    def verify_password(plain_password: str, hashed_password: str) -> bool: return True
+    def create_access_token(data: dict) -> str: return "fake_jwt_token_for_" + data.get("sub","unknown")
 
 
-async def signup_user(user_data: dict) -> dict: # UserCreate model typically
+async def signup_user(user_create: UserCreate, db: Session) -> UserResponse:
     """
     Handles user signup.
     1. Check if user with this email already exists.
@@ -22,31 +46,66 @@ async def signup_user(user_data: dict) -> dict: # UserCreate model typically
     3. Create user in the database.
     4. Return user information (excluding password).
     """
-    # hashed_password = get_password_hash(user_data['password'])
-    # db_user = db.get_user_by_email(email=user_data['email'])
-    # if db_user:
-    #     raise ValueError("User with this email already exists")
-    # new_user_data = user_data.copy()
-    # new_user_data['password_hash'] = hashed_password
-    # del new_user_data['password']
-    # created_user = db.create_user(new_user_data)
-    # return {"id": created_user.id, "email": created_user.email, "full_name": created_user.full_name}
-    print(f"Placeholder: Signing up user with data: {user_data}")
-    return {"id": 1, "email": user_data.get("email"), "full_name": user_data.get("full_name"), "message": "Signup logic placeholder"}
+    db_user = await db_get_user_by_email(db, email=user_create.email)
+    if db_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered",
+        )
+
+    hashed_password = get_password_hash(user_create.password)
+
+    user_create_db_data = UserCreateDB(
+        email=user_create.email,
+        hashed_password=hashed_password,
+        full_name=user_create.full_name,
+        user_role=getattr(user_create, 'user_role', None), # getattr for safety if Pydantic model isn't updated
+        user_company_name=getattr(user_create, 'user_company_name', None) # Pass new fields
+    )
+
+    created_user_orm = await db_create_user(db, user_create_data=user_create_db_data)
+
+    # UserResponse should also be updated to include these fields if they are to be returned
+    # This was done in the previous subtask for src.models.user_models.UserResponse
+    return UserResponse(
+        id=created_user_orm.id,
+        email=created_user_orm.email,
+        full_name=created_user_orm.full_name,
+        user_role=getattr(created_user_orm, 'user_role', None),
+        user_company_name=getattr(created_user_orm, 'user_company_name', None)
+    )
 
 
-async def login_for_access_token(form_data: dict) -> dict: # UserLogin model typically
+async def login_for_access_token(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends() # Assuming get_db will be used in the route for this
+) -> Token:
     """
-    Handles user login.
-    1. Retrieve user by email.
+    Handles user login using OAuth2PasswordRequestForm.
+    1. Retrieve user by email (username from form_data).
     2. Verify password.
     3. If valid, create and return JWT access token.
     """
-    # user = db.get_user_by_email(email=form_data['email'])
-    # if not user or not verify_password(form_data['password'], user.password_hash):
-    #     raise ValueError("Incorrect email or password")
-    # access_token = create_access_token(data={"sub": user.email})
-    # return {"access_token": access_token, "token_type": "bearer"}
-    print(f"Placeholder: Logging in user with data: {form_data}")
-    # access_token = create_access_token(data={"sub": form_data.get("email")}) # Needs jwt_handler to be importable
-    return {"access_token": "fake_jwt_token", "token_type": "bearer", "message": "Login logic placeholder"}
+    user = await db_get_user_by_email(db, email=form_data.username) # form_data.username is the email
+    if not user or not verify_password(form_data.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"}, # Standard for token errors
+        )
+
+    # Create JWT token. Subject can be user's email or ID. Using ID is common.
+    access_token_data = {"sub": str(user.id)}
+    access_token = create_access_token(data=access_token_data)
+
+    return Token(access_token=access_token, token_type="bearer")
+
+# Security Note for jwt_handler.py:
+# The JWT_SECRET key is critical for the security of token generation and validation.
+# Currently, if it's hardcoded in jwt_handler.py, it poses a significant security risk.
+# This secret MUST be:
+# 1. Strong and randomly generated.
+# 2. Loaded from environment variables or a secure configuration management system.
+#    Example: os.getenv("JWT_SECRET")
+# 3. Kept confidential and not committed to version control if hardcoded.
+# Failure to secure the JWT_SECRET properly can lead to unauthorized access and token forgery.

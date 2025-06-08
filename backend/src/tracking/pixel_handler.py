@@ -1,63 +1,78 @@
 # backend/src/tracking/pixel_handler.py
-from typing import Dict, Any
-import datetime
+import base64
+from fastapi import APIRouter, Request, Depends, HTTPException, status
+from fastapi.responses import Response
+from sqlalchemy.orm import Session
 
-# Placeholder for database interaction functions
-# async def db_record_email_open(tracking_pixel_id: str, opened_ip: str) -> bool:
-#     """
-#     Records an email open event in the database.
-#     Updates SentEmails table: status='opened', opened_at, first_opened_ip, last_opened_at, open_count.
-#     Returns True if an email was found and updated, False otherwise.
-#     """
-#     # 1. Find SentEmail record by tracking_pixel_id.
-#     # 2. If found:
-#     #    - Increment open_count.
-#     #    - Set opened_at (if not already set) and last_opened_at to current time.
-#     #    - Set first_opened_ip (if not already set).
-#     #    - Update status to 'opened' (if it's not already something like 'clicked').
-#     #    - Save changes.
-#     #    Return True
-#     # 3. If not found, return False or log an error.
-#     print(f"DB: Recording open for pixel_id {tracking_pixel_id} from IP {opened_ip}")
-#     # Simulate finding and updating a record
-#     if tracking_pixel_id.startswith("valid_"):
-#         # In a real app, you'd update the SentEmails table here
-#         # update_query = "UPDATE SentEmails SET open_count = open_count + 1, ..."
-#         return True
-#     return False
+try:
+    from src.database import get_db
+    from src.followups.db_operations import db_record_email_open # Actual DB operation
+except ImportError:
+    # Placeholders for robustness
+    print("TrackingAPI: Could not import DB components. Using placeholders.")
+    class Session: pass # type: ignore
+    def get_db(): return Session() # type: ignore
+    async def db_record_email_open(db: Session, tracking_pixel_id: str, opened_ip: str) -> bool: # type: ignore
+        print(f"Placeholder db_record_email_open called with pixel_id: {tracking_pixel_id}, IP: {opened_ip}")
+        return True # Simulate found and processed for basic testing
 
+# --- Minimal PNG Bytes ---
+# This is a 1x1 transparent PNG.
+# iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=
+MINIMAL_PNG_BYTES = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+)
 
-# This would be part of a web framework (e.g., FastAPI, Flask)
-# For FastAPI, it might look like:
-# from fastapi import APIRouter, Request, HTTPException
-# from fastapi.responses import FileResponse
-# router = APIRouter()
-# @router.get("/track/open/{pixel_id}.png")
+router = APIRouter(
+    prefix="/track", # Common prefix for tracking endpoints
+    tags=["tracking"]
+)
 
-async def handle_open_tracking_pixel_request(
+@router.get("/open/{pixel_id}.png")
+async def handle_open_tracking_pixel_request_api(
     pixel_id: str,
-    client_ip: str, # Extracted by the web framework from the request
-    db_record_email_open_func # Injected DB function
-) -> Dict[str, Any]: # In a real app, this returns an image response
+    request: Request,
+    db: Session = Depends(get_db)
+):
     """
-    Handles a request for an open tracking pixel.
-    Logs the open event and should return a 1x1 transparent pixel image.
+    Handles requests for an email open tracking pixel.
+    Records the open event and returns a minimal PNG image.
     """
-    print(f"PIXEL_HANDLER: Received open tracking request for pixel_id: {pixel_id} from IP: {client_ip}")
+    client_ip = request.client.host if request.client else "unknown"
+
+    # print(f"TrackingAPI: Pixel request received for ID: {pixel_id} from IP: {client_ip}") # Optional: reduce noise
 
     try:
-        updated = await db_record_email_open_func(tracking_pixel_id=pixel_id, opened_ip=client_ip)
-        if updated:
-            print(f"PIXEL_HANDLER: Successfully recorded open for pixel_id: {pixel_id}")
-        else:
-            print(f"PIXEL_HANDLER: No matching email found for pixel_id: {pixel_id} or already processed.")
-            # Still return the pixel to avoid broken images, but log this.
+        success = await db_record_email_open(
+            db=db,
+            tracking_pixel_id=pixel_id,
+            opened_ip=client_ip
+        )
+        # if success:
+            # print(f"TrackingAPI: Email open successfully recorded for pixel ID: {pixel_id}") # Optional: reduce noise
+        # else:
+            # print(f"TrackingAPI: Pixel ID not found or failed to record: {pixel_id}") # Optional: reduce noise
+            # Still return the image to avoid broken images in emails even if the ID is invalid.
     except Exception as e:
-        # Log the error, but still return the pixel to ensure email clients don't show broken images.
-        print(f"PIXEL_HANDLER: Error recording open for {pixel_id}: {e}")
+        # Log the error, but still return the image to avoid breaking client.
+        print(f"TrackingAPI: Error processing pixel ID {pixel_id}: {e}")
+        # Consider more detailed logging for production.
 
-    # In a real web framework, you would return a FileResponse for a 1x1 transparent PNG.
-    # For this subtask, we just return a success message.
-    # e.g., return FileResponse("path/to/static/1x1.png", media_type="image/png",
-    #                           headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"})
-    return {"status": "success", "message": "Pixel request processed. Image would be served here."}
+    # Always return the 1x1 transparent PNG image.
+    # Set cache-control headers to prevent caching of the tracking pixel.
+    return Response(
+        content=MINIMAL_PNG_BYTES,
+        media_type="image/png",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate, private, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        }
+    )
+
+# Example of how this router might be included in a main FastAPI app:
+# from fastapi import FastAPI
+# from src.tracking import pixel_handler # Assuming this file is src/tracking/pixel_handler.py
+# app = FastAPI()
+# app.include_router(pixel_handler.router)
+```

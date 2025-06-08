@@ -1,81 +1,117 @@
 # backend/src/followups/rules_service.py
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional # Keep Dict, Any for conditions if they are JSON
 import datetime
+from sqlalchemy.orm import Session
 
-# Placeholder for database interaction functions for FollowUpRules table
-# async def db_create_follow_up_rule(rule_data: Dict[str, Any]) -> Dict[str, Any]: pass
-# async def db_get_follow_up_rule(rule_id: int) -> Optional[Dict[str, Any]]: pass
-# async def db_get_follow_up_rules_for_campaign(campaign_id: int) -> List[Dict[str, Any]]: pass
-# async def db_update_follow_up_rule(rule_id: int, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]: pass
-# async def db_delete_follow_up_rule(rule_id: int) -> bool: pass
+# Assuming ORM models and Pydantic schemas are correctly defined and importable
+try:
+    from src.models.follow_up_models import FollowUpRule
+    from src.schemas.follow_up_schemas import FollowUpRuleCreate, FollowUpRuleUpdate
+except ImportError:
+    # Placeholders for robustness
+    class FollowUpRule: pass
+    class FollowUpRuleCreate: pass
+    class FollowUpRuleUpdate: pass
+
+# Import DB operations
+from .db_operations import (
+    db_create_follow_up_rule,
+    db_get_follow_up_rule,
+    db_get_follow_up_rules_for_campaign,
+    db_update_follow_up_rule,
+    db_delete_follow_up_rule,
+)
 
 class FollowUpRuleServiceError(Exception):
     pass
 
 async def create_rule(
+    db: Session,
     campaign_id: int,
-    original_email_template_id: int, # Or could be broader, e.g., applies to all in campaign
+    original_email_template_id: int,
     follow_up_email_template_id: int,
-    delay_days: int,
-    condition: str, # e.g., 'not_opened_within_delay', 'not_replied_within_delay', 'sent_anyway'
-    is_active: bool = True,
-    #db_create_follow_up_rule_func # Injected DB function
-) -> Dict[str, Any]:
+    delay_days: int, # Changed to delay_days
+    condition: str,  # Changed to condition: str
+    is_active: bool = True
+) -> FollowUpRule:
     """Creates a new follow-up rule."""
     if delay_days < 0:
         raise FollowUpRuleServiceError("Delay days cannot be negative.")
-    # Add more validation for condition if needed
 
-    rule_data = {
-        "campaign_id": campaign_id,
+    # Optional: Validate condition string if it's from a predefined set
+    # valid_conditions = ["not_opened_within_delay", "not_clicked_within_delay", "sent_anyway"]
+    # if condition not in valid_conditions:
+    #     raise FollowUpRuleServiceError(f"Invalid condition: {condition}")
+
+    rule_data = FollowUpRuleCreate( # Assumes FollowUpRuleCreate schema expects delay_days and condition
+        campaign_id=campaign_id,
+        original_email_template_id=original_email_template_id,
+        follow_up_email_template_id=follow_up_email_template_id,
+        delay_days=delay_days,
+        condition=condition,
+        is_active=is_active,
+    )
+
+    created_rule = await db_create_follow_up_rule(db, rule_data)
+    # The DB operation should raise an error if creation fails, or return the object.
+    # No need to explicitly check for `not created_rule` unless db_op can return None on success.
+    return created_rule
+
+async def get_rule(db: Session, rule_id: int) -> Optional[FollowUpRule]:
+    """Retrieves a specific follow-up rule by its ID."""
+    rule = await db_get_follow_up_rule(db, rule_id)
+    return rule
+
+async def get_rules_for_campaign(db: Session, campaign_id: int) -> List[FollowUpRule]:
+    """Retrieves all follow-up rules for a given campaign."""
+    rules = await db_get_follow_up_rules_for_campaign(db, campaign_id)
+    return rules
+
+async def update_rule(
+    db: Session,
+    rule_id: int,
+    # Pass individual fields or a Pydantic schema for updates
+    # Using individual fields for clarity on what's updatable via service layer
+    original_email_template_id: Optional[int] = None,
+    follow_up_email_template_id: Optional[int] = None,
+    delay_days: Optional[int] = None,    # Changed to delay_days
+    condition: Optional[str] = None,     # Changed to condition: str
+    is_active: Optional[bool] = None
+) -> Optional[FollowUpRule]:
+    """Updates an existing follow-up rule."""
+
+    if delay_days is not None and delay_days < 0:
+        raise FollowUpRuleServiceError("Delay days cannot be negative if provided.")
+
+    # Optional: Validate condition string if provided
+    # if condition is not None and condition not in ["not_opened_within_delay", ...]:
+    #     raise FollowUpRuleServiceError(f"Invalid condition: {condition}")
+
+    update_data_dict = { # Assumes FollowUpRuleUpdate schema expects delay_days and condition
         "original_email_template_id": original_email_template_id,
         "follow_up_email_template_id": follow_up_email_template_id,
         "delay_days": delay_days,
         "condition": condition,
         "is_active": is_active,
-        # "created_at": datetime.datetime.now(datetime.timezone.utc) # DB default
     }
-    # created_rule = await db_create_follow_up_rule_func(rule_data)
-    # For subtask simulation:
-    print(f"RULES_SERVICE: Simulating creation of follow-up rule for campaign {campaign_id}")
-    created_rule = {**rule_data, "id": 1, "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat()}
-    if not created_rule:
-        raise FollowUpRuleServiceError("Failed to create follow-up rule in database.")
-    return created_rule
+    # Filter out None values to only update provided fields
+    filtered_updates = {k: v for k, v in update_data_dict.items() if v is not None}
 
-async def get_rule(rule_id: int, db_get_follow_up_rule_func) -> Optional[Dict[str, Any]]:
-    """Retrieves a specific follow-up rule by its ID."""
-    # rule = await db_get_follow_up_rule_func(rule_id)
-    # For subtask simulation:
-    print(f"RULES_SERVICE: Simulating fetching rule with ID {rule_id}")
-    if rule_id == 1: # Simulate found
-        return {"id": rule_id, "campaign_id": 101, "delay_days": 3, "condition": "not_opened_within_delay"}
-    return None
+    if not filtered_updates:
+        # Or fetch and return the existing rule if no update fields are provided
+        raise FollowUpRuleServiceError("No update data provided.")
 
-async def get_rules_for_campaign(campaign_id: int, db_get_follow_up_rules_for_campaign_func) -> List[Dict[str, Any]]:
-    """Retrieves all follow-up rules for a given campaign."""
-    # rules = await db_get_follow_up_rules_for_campaign_func(campaign_id)
-    # For subtask simulation:
-    print(f"RULES_SERVICE: Simulating fetching rules for campaign ID {campaign_id}")
-    if campaign_id == 101:
-         return [{"id": 1, "campaign_id": 101, "delay_days": 3, "condition": "not_opened_within_delay", "is_active": True}]
-    return []
+    rule_update_schema = FollowUpRuleUpdate(**filtered_updates)
 
-async def update_rule(rule_id: int, updates: Dict[str, Any], db_update_follow_up_rule_func) -> Optional[Dict[str, Any]]:
-    """Updates an existing follow-up rule."""
-    if "delay_days" in updates and updates["delay_days"] < 0:
-        raise FollowUpRuleServiceError("Delay days cannot be negative if provided in updates.")
-    # updated_rule = await db_update_follow_up_rule_func(rule_id, updates)
-    # For subtask simulation:
-    print(f"RULES_SERVICE: Simulating update for rule ID {rule_id} with data {updates}")
-    updated_rule = {"id": rule_id, **updates}
+    updated_rule = await db_update_follow_up_rule(db, rule_id, rule_update_schema)
+    # db_update_follow_up_rule will return None if rule not found, or the updated rule.
     if not updated_rule:
-        raise FollowUpRuleServiceError(f"Failed to update rule ID {rule_id} or rule not found.")
+         # This could mean rule not found, or update failed if db_op handled it that way.
+         # Assuming db_op returns None if not found.
+        pass # Or raise specific "not found" error from service layer if desired.
     return updated_rule
 
-async def delete_rule(rule_id: int, db_delete_follow_up_rule_func) -> bool:
+async def delete_rule(db: Session, rule_id: int) -> bool:
     """Deletes a follow-up rule."""
-    # success = await db_delete_follow_up_rule_func(rule_id)
-    # For subtask simulation:
-    print(f"RULES_SERVICE: Simulating deletion of rule ID {rule_id}")
-    return True # Simulate success
+    success = await db_delete_follow_up_rule(db, rule_id)
+    return success
