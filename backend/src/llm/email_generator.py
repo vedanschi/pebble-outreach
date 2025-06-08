@@ -8,7 +8,9 @@ from typing import Dict, Tuple, Optional
 
 # It's crucial to load API keys from environment variables or a secure config system.
 # NEVER hardcode API keys.
-# LLM_API_KEY = os.getenv("OPENAI_API_KEY") # Example for OpenAI
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+# from openai import OpenAI # Ensure this import is uncommented when using actual API
 
 class LLMIntegrationError(Exception):
     """Custom exception for LLM integration issues."""
@@ -85,56 +87,52 @@ async def generate_personalized_email(
     """
 
     # In a real app, api_key would be fetched securely if not provided.
-    # current_api_key = api_key or os.getenv("OPENAI_API_KEY")
-    # if not current_api_key:
-    #     raise LLMIntegrationError("LLM API key not provided or configured.")
+    current_api_key = api_key or OPENAI_API_KEY
+    if not current_api_key:
+        # In a real application, you might have a fallback or a clearer error for the user.
+        # For now, we'll simulate if no key is found, but log a warning.
+        print("Warning: OPENAI_API_KEY not found. Using simulated LLM response.")
+        # Fallback to simulation if API key is not available
+        return _simulate_llm_response(user_core_prompt, contact_data, your_company_name)
 
-    # client = OpenAI(api_key=current_api_key) # Example: Initialize OpenAI client
+    # client = OpenAI(api_key=current_api_key) # Uncomment when using actual API
 
     prompt_to_llm = _construct_llm_prompt(user_core_prompt, contact_data, your_company_name)
 
-    print("\n--- Sending to LLM (Simulation) ---")
-    # print(prompt_to_llm) #  Can be very verbose
+    print("\n--- Attempting LLM API Call (Commented Out) ---")
     print("Prompt constructed. Length:", len(prompt_to_llm))
     print("------------------------------------\n")
 
-    # === Placeholder for actual LLM API call ===
+    generated_text = ""
+    # === Example of actual LLM API call (Commented Out) ===
     # try:
+    #     # Ensure you have the 'openai' library installed: pip install openai
+    #     # And initialize the client: client = OpenAI(api_key=current_api_key)
     #     response = client.chat.completions.create(
-    #         model="gpt-3.5-turbo", # Or other preferred model
+    #         model="gpt-3.5-turbo",  # Or your preferred model, e.g., "gpt-4"
     #         messages=[
-    #             # System message is now part of the main prompt_to_llm
     #             {"role": "user", "content": prompt_to_llm}
     #         ],
-    #         temperature=0.7, # Adjust for creativity vs. predictability
-    #         max_tokens=500  # Adjust as needed
+    #         temperature=0.7,  # Adjust for creativity
+    #         max_tokens=500,   # Adjust based on expected output length
+    #         # You might want to add other parameters like 'n' for multiple choices, 'stop' sequences, etc.
     #     )
     #     generated_text = response.choices[0].message.content.strip()
+    #     if not generated_text:
+    #         raise LLMIntegrationError("LLM returned an empty response.")
     # except Exception as e:
-    #     # Handle various API errors (rate limits, auth, network, etc.)
-    #     raise LLMIntegrationError(f"LLM API call failed: {e}")
-    # ==========================================
+    #     # Log the error for debugging purposes
+    #     print(f"LLM API call error: {e}") # Consider using proper logging
+    #     # Depending on the error, you might want to retry or use a fallback.
+    #     # For this subtask, we'll fall back to simulation if the (commented out) call fails.
+    #     print("Falling back to simulated LLM response due to (simulated) API error.")
+    #     return _simulate_llm_response(user_core_prompt, contact_data, your_company_name)
+    # =======================================================
 
-    # Simulate LLM response for this subtask
-    # Using f-string for more dynamic simulation based on input
-    simulated_llm_output = f"""
-Subject: Personalized Intro to Our AI Solutions for {contact_data.get('company_name', 'Your Company')}
-Body:
-Hi {contact_data.get('first_name', 'Valued Professional')},
-
-I hope this email finds you well.
-
-I'm writing to you from {your_company_name} because I came across your work at {contact_data.get('company_name', 'your company')} and was impressed by your role as {contact_data.get('job_title', 'a key player in your industry')}.
-
-We specialize in helping companies like yours leverage cutting-edge solutions. Based on your core request: "{user_core_prompt}", we believe our offerings align perfectly with your needs.
-
-Would you be open to a brief 15-minute call next week to explore how we can help {contact_data.get('company_name', 'your team')} achieve its goals?
-
-Best regards,
-[Your Name/Signature]
-{your_company_name}
-"""
-    generated_text = simulated_llm_output
+    # If the actual API call is commented out, we must use simulation:
+    if not generated_text: # This will be true if the above block is commented out
+        print("Using simulated LLM response as the API call block is commented out.")
+        return _simulate_llm_response(user_core_prompt, contact_data, your_company_name)
 
     # --- Parse the generated text to extract subject and body ---
     subject = "Default Subject - Check LLM Output"
@@ -186,6 +184,27 @@ Best regards,
                 body = "\n".join(lines[1:]).strip()
 
 
+    return subject, body
+
+
+def _simulate_llm_response(user_core_prompt: str, contact_data: Dict[str, str], your_company_name: str) -> Tuple[str, str]:
+    """Provides a simulated LLM response for testing without making an actual API call."""
+    print(f"Simulating LLM response for: {contact_data.get('email', 'N/A')}")
+    subject = f"Personalized Intro: {user_core_prompt[:30]}... for {contact_data.get('company_name', 'Your Company')}"
+    body = f"""Hi {contact_data.get('first_name', 'Valued Professional')},
+
+I hope this email finds you well.
+
+I'm writing to you from {your_company_name}. We noticed your work at {contact_data.get('company_name', 'your company')} and were particularly interested in your role as {contact_data.get('job_title', 'a key player in your industry')}.
+
+Regarding your interest: "{user_core_prompt}", we offer solutions that could be highly beneficial. For example, our SuperWidget can help you achieve significant time savings.
+
+Would you be available for a brief 15-minute chat next week to discuss how {your_company_name} can specifically help {contact_data.get('company_name', 'your team')}?
+
+Best regards,
+[Your Name/Signature]
+{your_company_name}
+"""
     return subject, body
 
 
