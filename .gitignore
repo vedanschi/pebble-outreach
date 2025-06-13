@@ -21,6 +21,7 @@ backend/.DS_Store
 .env
 __pycache__/
 *.pyc
+database_schema/
 
 # VSCode
 .vscode/
