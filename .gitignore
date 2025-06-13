@@ -1,33 +1,86 @@
 # Node.js / Next.js
 frontend/node_modules/
 frontend/.next/
-frontend/.env.local
-frontend/.env*
+frontend/out/
+frontend/.env*.local
+frontend/.vercel
+frontend/build
+frontend/.turbo
+frontend/coverage/
 
 # Python / FastAPI
 backend/venv/
 backend/.env
 backend/__pycache__/
-backend/*.pyc
+backend/**/__pycache__/
+backend/*.py[cod]
+backend/*$py.class
 backend/.pytest_cache/
-backend/.mypy_cache/
 backend/.coverage
-backend/.DS_Store
+backend/htmlcov/
+backend/.mypy_cache/
+backend/.ruff_cache/
+backend/dist/
+backend/build/
+backend/*.egg-info/
 
-# General
-*.log
+# Database
 *.sqlite3
-.DS_Store
+*.sqlite3-journal
+*.db
+pgdata/
+
+# Environment variables
 .env
-__pycache__/
-*.pyc
-database_schema/
+.env.*
+!.env.example
+.venv
+env/
+venv/
+ENV/
 
-# VSCode
-.vscode/
-
-# OS generated
-Thumbs.db
-ehthumbs.db
+# IDE specific files
 .idea/
+.vscode/
 *.swp
+*.swo
+*.swn
+*.bak
+*.orig
+*~
+
+# OS specific files
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Project specific
+data/
+logs/
+tmp/
+temp/
+uploads/
+database_schema/
+*.csv
+*.xlsx
+*.xls
+
+# Testing
+.coverage
+coverage/
+htmlcov/
+.pytest_cache/
+test-results/
+
+# Documentation
+docs/_build/
+site/
+
+# Misc
+*.bak
+*.tmp
+*.temp
+.history/
