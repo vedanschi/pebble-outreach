@@ -1,5 +1,5 @@
 # backend/src/campaigns/routes.py
-from typing import List, Optional
+from typing import List, Optional, Dict
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -252,4 +252,46 @@ async def send_campaign_emails(
         print(f"Unexpected error sending campaign {campaign_id}: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An unexpected error occurred while sending the campaign.")
 
-```
+# --- Personalization Routes ---
+from .personalization_service import PersonalizationService
+
+@router.post("/{campaign_id}/generate-emails")
+async def generate_campaign_emails(
+    campaign_id: int,
+    prompt: Dict[str, str],
+    db: Session = Depends(get_db)
+):
+    try:
+        service = PersonalizationService(db)
+        template = await service.generate_campaign_emails(
+            campaign_id=campaign_id,
+            user_prompt=prompt["prompt"]
+        )
+        return {"template_id": template.id}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/preview-email")
+async def preview_email(
+    template_id: int,
+    contact_id: int,
+    db: Session = Depends(get_db)
+):
+    try:
+        service = PersonalizationService(db)
+        preview = await service.preview_personalized_email(template_id, contact_id)
+        return preview
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/validate-template/{template_id}")
+async def validate_template(
+    template_id: int,
+    db: Session = Depends(get_db)
+):
+    try:
+        service = PersonalizationService(db)
+        validation = await service.validate_template(template_id)
+        return validation
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
