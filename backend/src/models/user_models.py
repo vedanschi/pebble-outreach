@@ -105,4 +105,4 @@ class Token(BaseModel): # For returning JWT token
     access_token: str
     token_type: str
 
-```
+

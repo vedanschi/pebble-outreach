@@ -1,0 +1,32 @@
+# Node.js / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/.env.local
+frontend/.env*
+
+# Python / FastAPI
+backend/venv/
+backend/.env
+backend/__pycache__/
+backend/*.pyc
+backend/.pytest_cache/
+backend/.mypy_cache/
+backend/.coverage
+backend/.DS_Store
+
+# General
+*.log
+*.sqlite3
+.DS_Store
+.env
+__pycache__/
+*.pyc
+
+# VSCode
+.vscode/
+
+# OS generated
+Thumbs.db
+ehthumbs.db
+.idea/
+*.swp
