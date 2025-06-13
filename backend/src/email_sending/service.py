@@ -2,21 +2,13 @@
 import asyncio
 import aiosmtplib
 from email.message import EmailMessage
-from typing import Tuple, Optional, Dict, Any
+from typing import Tuple, Optional, Dict, Any, List
+from uuid import uuid4
+from datetime import datetime
 
-# Example of how SMTP configuration might be structured.
-# In a real application, this would be loaded from application settings,
-# environment variables, or a secure configuration management system.
-#
-# SMTP_CONFIG_EXAMPLE = {
-#     "host": "smtp.example.com",
-#     "port": 587,  # Standard port for TLS
-#     "username": "user@example.com",
-#     "password": "your_smtp_password",
-#     "use_tls": True,
-#     "sender_email": "noreply@example.com", # Default sender if not specified elsewhere
-#     "timeout": 10, # Connection timeout in seconds
-# }
+from sqlalchemy.orm import Session
+from ..core.config import settings
+from ..models.user_models import SentEmail, Contact, EmailTemplate, Campaign
 
 class EmailSendingError(Exception):
     """Custom exception for email sending issues."""
@@ -100,6 +92,188 @@ async def send_single_email_smtp(
         # Catch any other unexpected errors (network issues, etc.)
         return False, f"An unexpected error occurred while sending email: {e}"
 
+class EmailSendingService:
+    def __init__(self, db: Session):
+        self.db = db
+        self.smtp_config = {
+            "host": settings.SMTP_HOST,
+            "port": settings.SMTP_PORT,
+            "username": settings.SMTP_USER,
+            "password": settings.SMTP_PASSWORD,
+            "use_tls": settings.SMTP_USE_TLS,
+            "sender_email": settings.SMTP_SENDER_EMAIL,
+            "timeout": 10
+        }
+
+    async def send_campaign_emails(self, campaign_id: int) -> List[Tuple[bool, Optional[str]]]:
+        """
+        Sends emails for an entire campaign.
+        """
+        campaign = self.db.query(Campaign).filter(Campaign.id == campaign_id).first()
+        if not campaign:
+            return [(False, f"Campaign {campaign_id} not found")]
+
+        contacts = self.db.query(Contact).filter(Contact.campaign_id == campaign_id).all()
+        template = self.db.query(EmailTemplate).filter(EmailTemplate.campaign_id == campaign_id).first()
+        
+        results = []
+        for contact in contacts:
+            # Personalize email for each contact
+            subject = self._personalize_template(template.subject_template, contact)
+            body = self._personalize_template(template.body_template, contact)
+            
+            # Generate tracking pixel ID
+            tracking_pixel_id = str(uuid4())
+            
+            # Add tracking pixel to email body
+            body += f'<img src="{settings.APP_BASE_URL}/track/{tracking_pixel_id}" width="1" height="1" />'
+            
+            # Send email
+            success, error = await self._send_single_email(contact.email, subject, body)
+            
+            if success:
+                # Record sent email in database
+                sent_email = SentEmail(
+                    campaign_id=campaign_id,
+                    contact_id=contact.id,
+                    email_template_id=template.id,
+                    subject=subject,
+                    body=body,
+                    status='sent',
+                    sent_at=datetime.utcnow(),
+                    tracking_pixel_id=tracking_pixel_id
+                )
+                self.db.add(sent_email)
+                self.db.commit()
+            
+            results.append((success, error))
+        
+        return results
+
+    def _personalize_template(self, template: str, contact: Contact) -> str:
+        """
+        Personalizes email template with contact information.
+        """
+        replacements = {
+            "{first_name}": contact.first_name,
+            "{last_name}": contact.last_name,
+            "{full_name}": contact.full_name,
+            "{company_name}": contact.company_name,
+            "{job_title}": contact.job_title,
+            "{company_website}": contact.company_website or "",
+            "{industry}": contact.industry or "",
+            "{city}": contact.city or "",
+            "{country}": contact.country or "",
+        }
+        
+        personalized = template
+        for key, value in replacements.items():
+            personalized = personalized.replace(key, value)
+        
+        return personalized
+
+    async def _send_single_email(
+        self,
+        recipient_email: str,
+        subject: str,
+        body: str,
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Sends a single email using configured SMTP settings.
+        """
+        msg = EmailMessage()
+        msg["From"] = self.smtp_config["sender_email"]
+        msg["To"] = recipient_email
+        msg["Subject"] = subject
+        msg.set_content(body, subtype='html')
+
+        try:
+            smtp_client = aiosmtplib.SMTP(
+                hostname=self.smtp_config["host"],
+                port=self.smtp_config["port"],
+                timeout=self.smtp_config["timeout"]
+            )
+            
+            await smtp_client.connect()
+            
+            if self.smtp_config["use_tls"]:
+                await smtp_client.starttls()
+            
+            if self.smtp_config["username"] and self.smtp_config["password"]:
+                await smtp_client.login(
+                    self.smtp_config["username"],
+                    self.smtp_config["password"]
+                )
+            
+            await smtp_client.send_message(msg)
+            await smtp_client.quit()
+            return True, None
+
+        except Exception as e:
+            return False, f"Failed to send email: {str(e)}"
+
+    async def send_follow_up(self, original_email_id: int) -> Tuple[bool, Optional[str]]:
+        """
+        Sends a follow-up email based on an original sent email.
+        """
+        original_email = self.db.query(SentEmail).filter(SentEmail.id == original_email_id).first()
+        if not original_email:
+            return False, "Original email not found"
+            
+        contact = self.db.query(Contact).filter(Contact.id == original_email.contact_id).first()
+        template = self.db.query(EmailTemplate).filter(EmailTemplate.id == original_email.email_template_id).first()
+        
+        # Generate follow-up subject and body
+        subject = f"Re: {original_email.subject}"
+        tracking_pixel_id = str(uuid4())
+        
+        # Send the follow-up email
+        success, error = await self._send_single_email(
+            contact.email,
+            subject,
+            template.body_template + f'<img src="{settings.APP_BASE_URL}/track/{tracking_pixel_id}" width="1" height="1" />'
+        )
+        
+        if success:
+            # Record follow-up email
+            follow_up = SentEmail(
+                campaign_id=original_email.campaign_id,
+                contact_id=contact.id,
+                email_template_id=template.id,
+                subject=subject,
+                body=template.body_template,
+                status='sent',
+                sent_at=datetime.utcnow(),
+                tracking_pixel_id=tracking_pixel_id,
+                is_follow_up=True,
+                follows_up_on_email_id=original_email_id
+            )
+            self.db.add(follow_up)
+            self.db.commit()
+        
+        return success, error
+
+    def record_email_opened(self, tracking_pixel_id: str, ip_address: Optional[str] = None) -> bool:
+        """
+        Records when an email is opened via tracking pixel.
+        """
+        sent_email = self.db.query(SentEmail).filter(
+            SentEmail.tracking_pixel_id == tracking_pixel_id
+        ).first()
+        
+        if not sent_email:
+            return False
+            
+        sent_email.opened_at = sent_email.opened_at or datetime.utcnow()
+        sent_email.last_opened_at = datetime.utcnow()
+        sent_email.open_count += 1
+        
+        if ip_address and not sent_email.first_opened_ip:
+            sent_email.first_opened_ip = ip_address
+            
+        self.db.commit()
+        return True
+
 # Example usage (for testing purposes, typically not run directly from a service file)
 async def main_test():
     # This is a MOCK configuration. Replace with a real SMTP server for actual testing.
@@ -135,4 +309,3 @@ if __name__ == "__main__":
     # This example_usage is primarily for demonstration.
     print("Running email_sending.service.py example...")
     asyncio.run(main_test())
-```

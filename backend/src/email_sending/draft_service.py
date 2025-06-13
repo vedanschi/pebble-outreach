@@ -1,136 +1,226 @@
 # backend/src/email_sending/draft_service.py
 from typing import Tuple, List, Optional, Dict, Any
-import datetime
+from datetime import datetime
+from uuid import uuid4
 
-from sqlalchemy.orm import Session, selectinload, joinedload
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import select
 
-try:
-    from src.models.sent_email_models import SentEmail
-    from src.models.contact_models import Contact # To get recipient_email if not directly on SentEmail
-    from src.email_sending.service import send_single_email_smtp
-except ImportError:
-    # Placeholders for robustness
-    class SentEmail:
-        id: int; subject: str; body: str; status: str; contact_id: int
-        sent_at: Optional[datetime.datetime]; status_reason: Optional[str]
-        # Assuming a relationship 'contact' that has an 'email' attribute
-        contact: 'Contact'
-    class Contact:
-        id: int; email: str
-
-    async def send_single_email_smtp(recipient_email: str, subject: str, body: str, smtp_config: dict) -> Tuple[bool, Optional[str]]:
-        print(f"Mock sending email to {recipient_email} with subject '{subject}'")
-        # Simulate random success/failure for testing scheduler
-        # import random
-        # if random.choice([True, False]):
-        #     return True, None
-        # else:
-        #     return False, "Simulated SMTP error"
-        return True, None # Default to success for less noise during non-focused tests
-
+from src.models.user_models import SentEmail, Contact, Campaign, EmailTemplate
+from src.core.config import settings
+from .service import EmailSendingService
 
 class DraftSendingError(Exception):
+    """Custom exception for draft email sending issues."""
     pass
 
 async def send_pending_emails(
     db: Session,
-    smtp_config: Dict[str, Any],
     batch_limit: int = 50
 ) -> Tuple[int, int]:
     """
     Processes and sends emails marked as 'draft' or 'pending_send'.
+    Handles personalization, tracking pixels, and campaign management.
 
     Args:
-        db: SQLAlchemy Session.
-        smtp_config: SMTP configuration dictionary.
-        batch_limit: Maximum number of emails to process in this run.
+        db: SQLAlchemy Session
+        batch_limit: Maximum number of emails to process in one batch
 
     Returns:
-        Tuple (successful_sends, failed_sends).
+        Tuple (successful_sends, failed_sends)
     """
     successful_sends = 0
     failed_sends = 0
+    email_service = EmailSendingService(db)
 
-    print(f"DRAFT_SENDER: Checking for pending emails at {datetime.datetime.utcnow()} UTC")
+    print(f"DRAFT_SENDER: Processing pending emails at {datetime.utcnow()} UTC")
 
-    # 1. Query for 'draft' or 'pending_send' emails, up to batch_limit
-    #    Load the related Contact to get the email address.
+    # Query for pending emails with all needed relationships
     stmt = (
         select(SentEmail)
-        .options(joinedload(SentEmail.contact)) # Ensure contact is loaded to get email
+        .options(
+            joinedload(SentEmail.contact),
+            joinedload(SentEmail.campaign),
+            joinedload(SentEmail.email_template)
+        )
         .where(SentEmail.status.in_(['draft', 'pending_send']))
-        .order_by(SentEmail.created_at) # Process older drafts first
+        .order_by(SentEmail.created_at)
         .limit(batch_limit)
     )
 
-    pending_emails_results = await db.execute(stmt)
-    emails_to_send: List[SentEmail] = pending_emails_results.scalars().all()
+    pending_emails = db.execute(stmt).scalars().all()
 
-    if not emails_to_send:
-        print("DRAFT_SENDER: No pending emails to send in this batch.")
+    if not pending_emails:
+        print("DRAFT_SENDER: No pending emails found.")
         return 0, 0
 
-    print(f"DRAFT_SENDER: Found {len(emails_to_send)} emails to process.")
+    print(f"DRAFT_SENDER: Processing {len(pending_emails)} emails")
 
-    for email_record in emails_to_send:
-        if not email_record.contact or not email_record.contact.email:
-            print(f"DRAFT_SENDER: Email record ID {email_record.id} missing contact or contact email. Skipping.")
-            email_record.status = "failed"
-            email_record.status_reason = "Missing contact information"
-            db.add(email_record)
+    for email in pending_emails:
+        if not email.contact or not email.contact.email:
+            print(f"DRAFT_SENDER: Email {email.id} missing contact information")
+            await _update_email_status(db, email, "failed", "Missing contact information")
             failed_sends += 1
-            continue # Skip to the next email
-
-        recipient_email = email_record.contact.email
-
-        # 2. Update status to 'sending' and commit to lock the record
-        email_record.status = "sending"
-        email_record.status_reason = None # Clear previous reason
-        db.add(email_record)
-        try:
-            db.commit()
-            print(f"DRAFT_SENDER: Marked email ID {email_record.id} for {recipient_email} as 'sending'.")
-        except Exception as e:
-            db.rollback()
-            print(f"DRAFT_SENDER: Error marking email ID {email_record.id} as 'sending'. DB Error: {e}. Skipping.")
-            # This email will be picked up in the next run if the DB error is transient.
-            # No increment to failed_sends here as it wasn't an SMTP failure yet.
             continue
 
-        # 3. Call send_single_email_smtp
-        send_success, error_message = await send_single_email_smtp(
-            recipient_email=recipient_email,
-            subject=email_record.subject,
-            body=email_record.body, # Assuming body is already personalized and stored
-            smtp_config=smtp_config
-        )
-
-        # 4. Update status based on send result
-        if send_success:
-            email_record.status = "sent"
-            email_record.sent_at = datetime.datetime.utcnow()
-            email_record.status_reason = None
-            successful_sends += 1
-            print(f"DRAFT_SENDER: Successfully sent email ID {email_record.id} to {recipient_email}.")
-        else:
-            email_record.status = "failed"
-            email_record.status_reason = error_message or "Unknown SMTP error"
-            failed_sends += 1
-            print(f"DRAFT_SENDER: Failed to send email ID {email_record.id} to {recipient_email}. Error: {error_message}")
-
-        db.add(email_record)
         try:
-            db.commit() # Commit status update for this email
-        except Exception as e:
-            db.rollback()
-            print(f"DRAFT_SENDER: CRITICAL - DB Error updating status for email ID {email_record.id} after send attempt. DB Error: {e}.")
-            # If successful send, but this commit fails, email is sent but status not updated.
-            # If failed send, and this commit fails, status remains 'sending'.
-            # This scenario needs careful monitoring/manual intervention if it occurs frequently.
-            # For now, the successful/failed_sends count reflects the SMTP attempt.
+            # Mark as sending
+            await _update_email_status(db, email, "sending")
 
-    print(f"DRAFT_SENDER: Batch processing complete. Successful: {successful_sends}, Failed: {failed_sends}")
+            # Personalize email content
+            subject = _personalize_content(email.subject, email.contact)
+            body = _personalize_content(email.body, email.contact)
+
+            # Add tracking pixel
+            tracking_pixel_id = str(uuid4())
+            body = _add_tracking_pixel(body, tracking_pixel_id)
+
+            # Send email
+            success, error = await email_service._send_single_email(
+                recipient_email=email.contact.email,
+                subject=subject,
+                body=body
+            )
+
+            if success:
+                await _update_email_status(
+                    db, 
+                    email, 
+                    "sent",
+                    tracking_pixel_id=tracking_pixel_id,
+                    sent_at=datetime.utcnow()
+                )
+                successful_sends += 1
+                print(f"DRAFT_SENDER: Successfully sent email {email.id} to {email.contact.email}")
+            else:
+                await _update_email_status(db, email, "failed", error)
+                failed_sends += 1
+                print(f"DRAFT_SENDER: Failed to send email {email.id}: {error}")
+
+        except Exception as e:
+            await _update_email_status(db, email, "failed", str(e))
+            failed_sends += 1
+            print(f"DRAFT_SENDER: Error processing email {email.id}: {str(e)}")
+
+    print(f"DRAFT_SENDER: Batch complete. Success: {successful_sends}, Failed: {failed_sends}")
     return successful_sends, failed_sends
 
-```
+def _personalize_content(content: str, contact: Contact) -> str:
+    """
+    Personalizes email content with contact information.
+    """
+    replacements = {
+        "{first_name}": contact.first_name,
+        "{last_name}": contact.last_name,
+        "{full_name}": contact.full_name,
+        "{company_name}": contact.company_name,
+        "{job_title}": contact.job_title or "",
+        "{company_website}": contact.company_website or "",
+        "{industry}": contact.industry or "",
+        "{city}": contact.city or "",
+        "{country}": contact.country or "",
+        "{linkedin_url}": contact.linkedin_url or "",
+    }
+
+    personalized = content
+    for key, value in replacements.items():
+        personalized = personalized.replace(key, str(value))
+    
+    return personalized
+
+def _add_tracking_pixel(body: str, tracking_pixel_id: str) -> str:
+    """
+    Adds a tracking pixel to the email body.
+    """
+    pixel_url = f"{settings.APP_BASE_URL}/track/{tracking_pixel_id}"
+    tracking_pixel = f'<img src="{pixel_url}" width="1" height="1" alt="" style="display:none" />'
+    
+    # Insert before closing </body> tag if it exists, otherwise append
+    if "</body>" in body:
+        return body.replace("</body>", f"{tracking_pixel}</body>")
+    return f"{body}{tracking_pixel}"
+
+async def _update_email_status(
+    db: Session,
+    email: SentEmail,
+    status: str,
+    status_reason: Optional[str] = None,
+    tracking_pixel_id: Optional[str] = None,
+    sent_at: Optional[datetime] = None
+) -> None:
+    """
+    Updates email status and related fields in the database.
+    """
+    try:
+        email.status = status
+        email.status_reason = status_reason
+        if tracking_pixel_id:
+            email.tracking_pixel_id = tracking_pixel_id
+        if sent_at:
+            email.sent_at = sent_at
+        
+        db.add(email)
+        db.commit()
+        db.refresh(email)
+    except Exception as e:
+        db.rollback()
+        print(f"DRAFT_SENDER: Failed to update email {email.id} status: {str(e)}")
+        raise
+
+async def schedule_follow_ups(db: Session) -> None:
+    """
+    Schedules follow-up emails based on campaign rules and email status.
+    """
+    # Query sent emails that might need follow-ups
+    sent_emails = (
+        db.query(SentEmail)
+        .filter(
+            SentEmail.status == "sent",
+            SentEmail.is_follow_up == False,  # Only original emails
+            SentEmail.sent_at <= datetime.utcnow()  # Sent some time ago
+        )
+        .all()
+    )
+
+    for email in sent_emails:
+        campaign = db.query(Campaign).filter(Campaign.id == email.campaign_id).first()
+        if not campaign:
+            continue
+
+        # Check if follow-up conditions are met (e.g., email not opened after X days)
+        if _should_send_follow_up(email):
+            await create_follow_up_draft(db, email)
+
+def _should_send_follow_up(email: SentEmail) -> bool:
+    """
+    Determines if a follow-up email should be sent based on rules.
+    """
+    if not email.opened_at and (datetime.utcnow() - email.sent_at).days >= 3:
+        return True
+    return False
+
+async def create_follow_up_draft(db: Session, original_email: SentEmail) -> None:
+    """
+    Creates a draft follow-up email.
+    """
+    template = db.query(EmailTemplate).filter(
+        EmailTemplate.campaign_id == original_email.campaign_id,
+        EmailTemplate.is_follow_up == True
+    ).first()
+
+    if not template:
+        return
+
+    follow_up = SentEmail(
+        campaign_id=original_email.campaign_id,
+        contact_id=original_email.contact_id,
+        email_template_id=template.id,
+        subject=f"Re: {original_email.subject}",
+        body=template.body_template,
+        status="draft",
+        is_follow_up=True,
+        follows_up_on_email_id=original_email.id
+    )
+
+    db.add(follow_up)
+    db.commit()
