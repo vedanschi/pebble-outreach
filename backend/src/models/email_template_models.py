@@ -1,6 +1,7 @@
 # backend/src/models/email_template_models.py
 from datetime import datetime
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Boolean
+from sqlalchemy.sql import expression # Added for server_default
 from sqlalchemy.orm import relationship
 
 from . import Base
@@ -17,7 +18,7 @@ class EmailTemplate(Base):
     user_prompt = Column(Text)  # Stores the prompt used to generate the template
     
     is_follow_up = Column(Boolean, default=False)
-    is_primary = Column(Boolean, default=True)
+    is_primary = Column(Boolean, default=False, server_default=expression.false(), nullable=False) # Modified field
     
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
