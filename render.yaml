@@ -47,6 +47,16 @@ services:
         value: 30 # Default from settings.py
       - key: JWT_ALGORITHM
         value: "HS256" # Default from settings.py
+      - key: R2_BUCKET_NAME
+        value: "YOUR_R2_BUCKET_NAME" # Placeholder
+      - key: R2_ACCOUNT_ID
+        value: "YOUR_R2_ACCOUNT_ID" # Placeholder
+      - key: R2_ACCESS_KEY_ID
+        value: "YOUR_R2_ACCESS_KEY_ID" # Placeholder - SET IN RENDER DASHBOARD
+      - key: R2_SECRET_ACCESS_KEY
+        value: "YOUR_R2_SECRET_ACCESS_KEY" # Placeholder - SET IN RENDER DASHBOARD
+      - key: R2_ENDPOINT_URL
+        value: "YOUR_R2_ENDPOINT_URL" # Placeholder
 
     autoDeploy: true # Optional: enable auto-deploy on push to the connected Git branch
     # You might need to specify the branch to deploy from if it's not your default branch.

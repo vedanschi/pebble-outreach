@@ -14,6 +14,7 @@ apscheduler>=3.9.1
 together>=0.2.0
 httpx>=0.23.0
 alembic>=1.7.5
+boto3>=1.20.0
 pytest>=6.2.5
 pytest-asyncio>=0.16.0
 pytest-cov>=2.12.1
