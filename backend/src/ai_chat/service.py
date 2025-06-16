@@ -8,7 +8,7 @@ from src.ai_chat.schemas import ChatMessage # Pydantic schema for chat messages
 from src.llm.email_generator import generate_personalized_email, LLMIntegrationError # For final template generation
 from src.models.email_template_models import EmailTemplate # SQLAlchemy model for saving
 from src.models.contact_models import Contact # SQLAlchemy model for preview contact
-from src.schemas.email_template_schemas import EmailTemplateCreate # Pydantic schema for creation
+from src.schemas.email_schemas import EmailTemplateCreate # Pydantic schema for creation
 from src.llm.email_generator import generate_chat_response # Keep for existing method
 from src.campaigns.personalization_service import PersonalizationService # For preview
 
