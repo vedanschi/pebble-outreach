@@ -163,6 +163,78 @@ async def delete_campaign(
     # No response body needed for 204
     return None # Or return Response(status_code=status.HTTP_204_NO_CONTENT)
 
+@router.post("/campaigns/upload")
+async def upload_campaign_csv(
+    campaign_name: str,
+    file: UploadFile,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    content = await file.read()
+    campaign, contacts, errors = await process_csv_upload(
+        user_id=current_user.id,
+        campaign_name=campaign_name,
+        csv_file_content=content,
+        db=db
+    )
+    
+    return {
+        "campaign": campaign,
+        "contacts_imported": len(contacts),
+        "errors": errors
+    }
+
+# backend/src/campaigns/routes.py
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from typing import Dict, Any
+
+from src.core.config import get_db
+from .personalization_service import PersonalizationService
+
+router = APIRouter()
+
+@router.post("/campaigns/{campaign_id}/generate-emails")
+async def generate_campaign_emails(
+    campaign_id: int,
+    prompt: Dict[str, str],
+    db: Session = Depends(get_db)
+):
+    try:
+        service = PersonalizationService(db)
+        template = await service.generate_campaign_emails(
+            campaign_id=campaign_id,
+            user_prompt=prompt["prompt"]
+        )
+        return {"template_id": template.id}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/campaigns/preview-email")
+async def preview_email(
+    template_id: int,
+    contact_id: int,
+    db: Session = Depends(get_db)
+):
+    try:
+        service = PersonalizationService(db)
+        preview = await service.preview_personalized_email(template_id, contact_id)
+        return preview
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/campaigns/validate-template/{template_id}")
+async def validate_template(
+    template_id: int,
+    db: Session = Depends(get_db)
+):
+    try:
+        service = PersonalizationService(db)
+        validation = await service.validate_template(template_id)
+        return validation
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 # If you have other campaign-related routes (like CSV upload from previous subtasks),
 # they could be added to this router or managed in a separate file and included
 # in the main application's router setup.
