@@ -1,0 +1,53 @@
+version: 1
+services:
+  - type: pserv # PostgreSQL Database
+    name: pebble-postgres-db
+    plan: free # Or your desired plan, 'free' for initial setup
+    postgres:
+      version: 15 # Specify your desired PostgreSQL version
+    region: oregon # Or your desired region
+
+  - type: web
+    name: pebble-backend
+    env: python
+    plan: free # Or your desired plan
+    region: oregon # Or your desired region
+    buildCommand: "pip install --upgrade pip && pip install -r backend/requirements.txt && alembic -c backend/alembic.ini upgrade head"
+    startCommand: "uvicorn backend.src.main:app --host 0.0.0.0 --port $PORT --workers 1"
+    healthCheckPath: "/" # Points to the root endpoint in main.py
+    envVars:
+      - key: DATABASE_URL
+        fromService:
+          type: pserv
+          name: pebble-postgres-db
+          property: connectionString
+      - key: APP_ENV
+        value: production
+      - key: APP_BASE_URL
+        value: "YOUR_RENDER_BACKEND_URL_HERE" # Placeholder
+      - key: JWT_SECRET
+        generateValue: true # Render can generate a secure secret
+      - key: OPENAI_API_KEY
+        value: "YOUR_OPENAI_API_KEY_HERE" # Placeholder
+      - key: SMTP_HOST
+        value: "YOUR_SMTP_HOST_HERE" # Placeholder
+      - key: SMTP_PORT
+        value: 587 # Default from settings.py
+      - key: SMTP_USER
+        value: "YOUR_SMTP_USER_HERE" # Placeholder
+      - key: SMTP_PASSWORD
+        value: "YOUR_SMTP_PASSWORD_HERE" # Placeholder
+      - key: SMTP_SENDER_EMAIL
+        value: "YOUR_SMTP_SENDER_EMAIL_HERE" # Placeholder
+      - key: SMTP_USE_TLS
+        value: True # Default from settings.py
+      # Add other non-sensitive environment variables from settings.py if needed
+      # For example, if their defaults are not suitable for production.
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: 30 # Default from settings.py
+      - key: JWT_ALGORITHM
+        value: "HS256" # Default from settings.py
+
+    autoDeploy: true # Optional: enable auto-deploy on push to the connected Git branch
+    # You might need to specify the branch to deploy from if it's not your default branch.
+    # branch: main
