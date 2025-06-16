@@ -105,7 +105,8 @@ async def generate_email_template_endpoint(
         generated_subject, generated_body = await generate_personalized_email(
             user_core_prompt=request.user_prompt,
             contact_data=contact_data_for_llm,
-            current_user=current_user # Pass the authenticated user object
+            current_user=current_user, # Pass the authenticated user object
+            is_template_generation=True # Crucial change
             # API key is handled by generate_personalized_email internally
         )
     except LLMIntegrationError as e:

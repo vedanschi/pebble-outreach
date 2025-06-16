@@ -11,6 +11,7 @@ from src.campaigns import routes as campaign_routes
 from src.followups import routes as followup_routes
 from src.llm import routes as llm_routes
 from src.users import routes as user_routes
+from src.ai_chat import routes as ai_chat_routes
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -44,6 +45,7 @@ app.include_router(campaign_routes.router, prefix="/api/v1/campaigns", tags=["Ca
 app.include_router(followup_routes.router, prefix="/api/v1/followups", tags=["Follow-ups"])
 app.include_router(llm_routes.router, prefix="/api/v1/llm", tags=["LLM"])
 app.include_router(user_routes.router, prefix="/api/v1/users", tags=["Users"])
+app.include_router(ai_chat_routes.router, prefix="/api/v1/ai-chat", tags=["AI Chat & Email Style"])
 
 # Root endpoint
 @app.get("/")
