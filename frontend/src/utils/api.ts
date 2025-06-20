@@ -19,12 +19,12 @@ apiClient.interceptors.request.use((config) => {
 });
 
 // Authentication API calls
-export const login = async (credentials) => {
+export const login = async (credentials: Record<string, any>) => {
   const response = await apiClient.post('/auth/login', credentials);
   return response.data;
 };
 
-export const signup = async (userData) => {
+export const signup = async (userData: Record<string, any>) => {
   const response = await apiClient.post('/auth/signup', userData);
   return response.data;
 };
@@ -35,14 +35,19 @@ export const fetchCampaigns = async () => {
   return response.data;
 };
 
-export const createCampaign = async (campaignData) => {
+export const getCampaignDetails = async (campaignId: number) => {
+  const response = await apiClient.get(`/campaigns/${campaignId}`);
+  return response.data;
+};
+
+export const createCampaign = async (campaignData: Record<string, any>) => {
   const response = await apiClient.post('/campaigns', campaignData);
   return response.data;
 };
 
 // CSV Upload API call
-export const uploadCSV = async (formData) => {
-  const response = await apiClient.post('/campaigns/upload-csv', formData, {
+export const uploadCSV = async (campaignId: number, formData: FormData) => {
+  const response = await apiClient.post(`/campaigns/${campaignId}/upload-csv`, formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
@@ -51,18 +56,56 @@ export const uploadCSV = async (formData) => {
 };
 
 // Email Generation API call
-export const generateEmail = async (prompt) => {
+export const generateEmail = async (prompt: string) => {
   const response = await apiClient.post('/llm', { prompt });
   return response.data;
 };
 
-// Follow-up API calls
-export const fetchFollowUps = async () => {
-  const response = await apiClient.get('/followup-rules');
+// Sent Emails API
+export const getSentEmails = async (campaignId: number) => {
+  const response = await apiClient.get(`/campaigns/${campaignId}/sent-emails`);
   return response.data;
 };
 
-export const createFollowUp = async (followUpData) => {
-  const response = await apiClient.post('/followup-rules', followUpData);
+// Follow-up API calls
+export const fetchFollowUps = async (campaignId: number) => {
+  const response = await apiClient.get(`/campaigns/${campaignId}/followup-rules`);
+  return response.data;
+};
+
+export const createFollowUp = async (campaignId: number, followUpData: Record<string, any>) => {
+  const response = await apiClient.post(`/campaigns/${campaignId}/followup-rules`, followUpData);
+  return response.data;
+};
+
+export const updateFollowUp = async (campaignId: number, followUpId: number, followUpData: Record<string, any>) => {
+  const response = await apiClient.put(`/campaigns/${campaignId}/followup-rules/${followUpId}`, followUpData);
+  return response.data;
+};
+
+export const deleteFollowUp = async (campaignId: number, followUpId: number) => {
+  const response = await apiClient.delete(`/campaigns/${campaignId}/followup-rules/${followUpId}`);
+  return response.data;
+};
+
+// Email sending controls (start, pause, stop)
+export const startEmailSending = async (campaignId: number) => {
+  const response = await apiClient.post(`/campaigns/${campaignId}/send/start`);
+  return response.data;
+};
+
+export const pauseEmailSending = async (campaignId: number) => {
+  const response = await apiClient.post(`/campaigns/${campaignId}/send/pause`);
+  return response.data;
+};
+
+export const stopEmailSending = async (campaignId: number) => {
+  const response = await apiClient.post(`/campaigns/${campaignId}/send/stop`);
+  return response.data;
+};
+
+// Campaign stats (optional, if separate endpoint)
+export const getCampaignStats = async (campaignId: number) => {
+  const response = await apiClient.get(`/campaigns/${campaignId}/stats`);
   return response.data;
 };
