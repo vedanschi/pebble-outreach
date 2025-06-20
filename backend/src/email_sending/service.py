@@ -8,7 +8,8 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 from ..core.config import settings
-from ..models.user_models import SentEmail, Contact, EmailTemplate, Campaign
+from ..models.user_models import SentEmail, Contact, EmailTemplate, Campaign # Keep these for other methods if needed
+from .db_operations import db_record_email_open_event # Import the new DB operation
 
 class EmailSendingError(Exception):
     """Custom exception for email sending issues."""
@@ -105,72 +106,8 @@ class EmailSendingService:
             "timeout": 10
         }
 
-    async def send_campaign_emails(self, campaign_id: int) -> List[Tuple[bool, Optional[str]]]:
-        """
-        Sends emails for an entire campaign.
-        """
-        campaign = self.db.query(Campaign).filter(Campaign.id == campaign_id).first()
-        if not campaign:
-            return [(False, f"Campaign {campaign_id} not found")]
-
-        contacts = self.db.query(Contact).filter(Contact.campaign_id == campaign_id).all()
-        template = self.db.query(EmailTemplate).filter(EmailTemplate.campaign_id == campaign_id).first()
-        
-        results = []
-        for contact in contacts:
-            # Personalize email for each contact
-            subject = self._personalize_template(template.subject_template, contact)
-            body = self._personalize_template(template.body_template, contact)
-            
-            # Generate tracking pixel ID
-            tracking_pixel_id = str(uuid4())
-            
-            # Add tracking pixel to email body
-            body += f'<img src="{settings.APP_BASE_URL}/track/{tracking_pixel_id}" width="1" height="1" />'
-            
-            # Send email
-            success, error = await self._send_single_email(contact.email, subject, body)
-            
-            if success:
-                # Record sent email in database
-                sent_email = SentEmail(
-                    campaign_id=campaign_id,
-                    contact_id=contact.id,
-                    email_template_id=template.id,
-                    subject=subject,
-                    body=body,
-                    status='sent',
-                    sent_at=datetime.utcnow(),
-                    tracking_pixel_id=tracking_pixel_id
-                )
-                self.db.add(sent_email)
-                self.db.commit()
-            
-            results.append((success, error))
-        
-        return results
-
-    def _personalize_template(self, template: str, contact: Contact) -> str:
-        """
-        Personalizes email template with contact information.
-        """
-        replacements = {
-            "{first_name}": contact.first_name,
-            "{last_name}": contact.last_name,
-            "{full_name}": contact.full_name,
-            "{company_name}": contact.company_name,
-            "{job_title}": contact.job_title,
-            "{company_website}": contact.company_website or "",
-            "{industry}": contact.industry or "",
-            "{city}": contact.city or "",
-            "{country}": contact.country or "",
-        }
-        
-        personalized = template
-        for key, value in replacements.items():
-            personalized = personalized.replace(key, value)
-        
-        return personalized
+    # send_campaign_emails method removed
+    # _personalize_template method removed
 
     async def _send_single_email(
         self,
@@ -253,26 +190,26 @@ class EmailSendingService:
         
         return success, error
 
-    def record_email_opened(self, tracking_pixel_id: str, ip_address: Optional[str] = None) -> bool:
+    async def record_email_opened(self, tracking_pixel_id: str, ip_address: Optional[str] = None) -> bool: # Made async
         """
-        Records when an email is opened via tracking pixel.
+        Records when an email is opened via tracking pixel using db_operations.
         """
-        sent_email = self.db.query(SentEmail).filter(
-            SentEmail.tracking_pixel_id == tracking_pixel_id
-        ).first()
-        
-        if not sent_email:
+        try:
+            success = await db_record_email_open_event(
+                db=self.db,
+                tracking_pixel_id=tracking_pixel_id,
+                opened_ip=ip_address
+            )
+            if success:
+                await self.db.commit() # Commit the changes made by db_record_email_open_event
+                return True
+            # If db_record_email_open_event returns False, it means the record wasn't found.
+            # No commit/rollback needed in that specific case from db_op, just return False from service.
             return False
-            
-        sent_email.opened_at = sent_email.opened_at or datetime.utcnow()
-        sent_email.last_opened_at = datetime.utcnow()
-        sent_email.open_count += 1
-        
-        if ip_address and not sent_email.first_opened_ip:
-            sent_email.first_opened_ip = ip_address
-            
-        self.db.commit()
-        return True
+        except Exception as e:
+            await self.db.rollback() # Rollback in case of other exceptions during the process
+            print(f"Error in record_email_opened service: {str(e)}") # Replace with proper logging
+            return False
 
 # Example usage (for testing purposes, typically not run directly from a service file)
 async def main_test():

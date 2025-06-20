@@ -3,9 +3,21 @@ from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 import openai
 from datetime import datetime
+from typing import List, Dict, Any, Optional # Ensure these are here
+from sqlalchemy.orm import Session # Ensure this is here
+import openai # Ensure this is here
 
 from src.core.config import settings
 from src.models.user_models import Campaign, Contact, EmailTemplate
+# Import new DB operation functions
+from .db_operations import (
+    db_get_email_template_by_id,
+    db_create_email_template,
+    db_get_contacts_for_campaign,
+    db_get_campaign_by_id
+)
+from src.followups.db_operations import db_get_contact_details # For specific contact
+from src.schemas.email_template_schemas import EmailTemplateCreate # For creating template
 
 class PersonalizationService:
     def __init__(self, db: Session):
@@ -22,11 +34,11 @@ class PersonalizationService:
         and contact data.
         """
         # Get campaign and contacts
-        campaign = self.db.query(Campaign).filter(Campaign.id == campaign_id).first()
+        campaign = await db_get_campaign_by_id(self.db, campaign_id)
         if not campaign:
             raise ValueError(f"Campaign {campaign_id} not found")
 
-        contacts = self.db.query(Contact).filter(Contact.campaign_id == campaign_id).all()
+        contacts = await db_get_contacts_for_campaign(self.db, campaign_id)
         if not contacts:
             raise ValueError(f"No contacts found for campaign {campaign_id}")
 
@@ -37,20 +49,35 @@ class PersonalizationService:
         system_prompt = self._create_system_prompt(sample_contact)
         
         # Generate base template
-        template = await self._generate_base_template(user_prompt, system_prompt, sample_contact)
+        generated_template_dict = await self._generate_base_template(user_prompt, system_prompt, sample_contact)
         
-        # Save template to database
-        email_template = EmailTemplate(
+        # Prepare data for new email template
+        email_template_data = EmailTemplateCreate(
             campaign_id=campaign_id,
+            name=f"AI Generated Template for {campaign.name} - {user_prompt[:30]}...", # Auto-generated name
             user_prompt=user_prompt,
-            subject_template=template["subject"],
-            body_template=template["body"],
-            created_at=datetime.utcnow()
+            subject_template=generated_template_dict["subject"],
+            body_template=generated_template_dict["body"]
+            # is_primary defaults to False in db_create_email_template, adjust if needed here
         )
         
-        self.db.add(email_template)
-        self.db.commit()
-        self.db.refresh(email_template)
+        # Save template to database using db operation
+        # Note: Current db_create_email_template doesn't set owner_id.
+        # EmailTemplate model doesn't have owner_id directly, it's via campaign.
+        # is_primary might need specific handling if this is the first/only template.
+        # For now, assuming default is_primary=False from db_op is acceptable.
+        email_template = await db_create_email_template(
+            self.db,
+            template_data=email_template_data
+            # is_primary=True # Consider if this should be the primary by default
+        )
+
+        try:
+            await self.db.commit()
+            await self.db.refresh(email_template)
+        except Exception as e:
+            await self.db.rollback()
+            raise Exception(f"Error saving generated email template: {str(e)}")
         
         return email_template
 
@@ -149,8 +176,9 @@ Industry: {sample_contact.industry}
         """
         Previews how an email will look for a specific contact.
         """
-        template = self.db.query(EmailTemplate).filter(EmailTemplate.id == template_id).first()
-        contact = self.db.query(Contact).filter(Contact.id == contact_id).first()
+        template = await db_get_email_template_by_id(self.db, template_id)
+        # Using db_get_contact_details from followups.db_operations
+        contact = await db_get_contact_details(self.db, contact_id)
         
         if not template or not contact:
             raise ValueError("Template or contact not found")
@@ -186,7 +214,7 @@ Industry: {sample_contact.industry}
         """
         Validates a template by checking for any missing or invalid personalization variables.
         """
-        template = self.db.query(EmailTemplate).filter(EmailTemplate.id == template_id).first()
+        template = await db_get_email_template_by_id(self.db, template_id)
         if not template:
             raise ValueError("Template not found")
 

@@ -7,10 +7,14 @@ from src.schemas.user_schemas import User as UserSchemaModel # Pydantic schema f
 from src.ai_chat.schemas import ChatMessage # Pydantic schema for chat messages
 from src.llm.email_generator import generate_personalized_email, LLMIntegrationError # For final template generation
 from src.models.email_template_models import EmailTemplate # SQLAlchemy model for saving
-from src.models.contact_models import Contact # SQLAlchemy model for preview contact
-from src.schemas.email_schemas import EmailTemplateCreate # Pydantic schema for creation
+from src.models.contact_models import Contact # SQLAlchemy model for preview contact. NOTE: followups.db_operations.db_get_contact_details returns this.
+from src.schemas.email_template_schemas import EmailTemplateCreate # Pydantic schema for creation
 from src.llm.email_generator import generate_chat_response # Keep for existing method
 from src.campaigns.personalization_service import PersonalizationService # For preview
+# Corrected import for db_create_email_template
+from src.campaigns.db_operations import db_create_email_template
+from .db_operations import db_set_other_templates_not_primary # This one is local to ai_chat
+from src.followups.db_operations import db_get_contact_details # For preview contact
 
 
 class AIChatService:
@@ -75,27 +79,24 @@ class AIChatService:
             else:
                 final_user_prompt_text = final_message.content
 
-        # 3. Fetch sample contact data if contact_id_for_preview is provided
+        # 3. Fetch sample contact data if contact_id_for_preview is provided for LLM context
         contact_data_for_llm: Dict[str, Any] = {}
+        # This contact_for_preview is for the LLM context, not necessarily the same as one for final preview display
+        # The one for final preview display is fetched later.
         if contact_id_for_preview:
-            # Assuming Contact model has owner_id to check against current_user_schema.id for authorization
-            # This check might be better suited in the route or a dedicated contact service
-            contact_for_preview = db.query(Contact).filter(
-                Contact.id == contact_id_for_preview,
-                Contact.owner_id == current_user_schema.id # Authorization check
-            ).first()
-            if contact_for_preview:
+            # Using db_get_contact_details which fetches by contact_id.
+            # We need to ensure this contact is appropriate for the campaign/user if used for LLM context.
+            # For now, just fetching it. Authorization for its use might be implicit (user owns campaign).
+            temp_contact_for_llm_context = await db_get_contact_details(db, contact_id_for_preview)
+            if temp_contact_for_llm_context and temp_contact_for_llm_context.owner_id == current_user_schema.id: # Basic auth check
                 contact_data_for_llm = {
-                    "first_name": contact_for_preview.first_name or "",
-                    "last_name": contact_for_preview.last_name or "",
-                    "email": contact_for_preview.email or "",
-                    "job_title": contact_for_preview.job_title or "",
-                    "company_name": contact_for_preview.company_name or "",
-                    # Add other fields as expected by generate_personalized_email
+                    "first_name": temp_contact_for_llm_context.first_name or "",
+                    "last_name": temp_contact_for_llm_context.last_name or "",
+                    "email": temp_contact_for_llm_context.email or "",
+                    "job_title": temp_contact_for_llm_context.job_title or "",
+                    "company_name": temp_contact_for_llm_context.company_name or "",
                 }
                 contact_data_for_llm = {k: v for k, v in contact_data_for_llm.items() if v}
-            # else: # If contact not found or not authorized, proceed without it or raise error
-                 # raise ValueError("Preview contact not found or access denied.")
 
         # 4. Call LLM to generate subject and body
         try:
@@ -115,65 +116,48 @@ class AIChatService:
         if not generated_subject or not generated_body:
             raise ValueError("LLM returned empty subject or body during finalization.")
 
-        # --- Manage is_primary flag ---
-        # Step 1: Set is_primary = False for all other templates of this campaign
+        # --- Database Operations for Template Creation ---
         try:
-            existing_templates = db.query(EmailTemplate).filter(EmailTemplate.campaign_id == campaign_id).all()
-            updated_existing = False
-            for tmpl in existing_templates:
-                if tmpl.is_primary: # Only update if it was primary
-                    tmpl.is_primary = False
-                    db.add(tmpl) # Add to session for update
-                    updated_existing = True
-            if updated_existing: # Only commit if there were templates to update
-                db.commit()
+            # Step 1: Set is_primary = False for all other templates of this campaign
+            await db_set_other_templates_not_primary(db, campaign_id=campaign_id)
+
+            # Step 2: Create the new EmailTemplate with is_primary = True
+            new_email_template_data = EmailTemplateCreate(
+                campaign_id=campaign_id,
+                name=f"AI Finalized Style - Campaign {campaign_id} - {final_user_prompt_text[:30]}...",
+                user_prompt=final_user_prompt_text,
+                subject_template=generated_subject,
+                body_template=generated_body
+            )
+            db_email_template = await db_create_email_template(
+                db,
+                template_data=new_email_template_data,
+                # owner_id is not taken by the centralized db_create_email_template
+                is_primary=True
+            )
+
+            await db.commit()
+            await db.refresh(db_email_template)
+
         except Exception as e:
-            db.rollback()
-            # Log error e (e.g., import logging; logging.error(f"Error updating existing templates for campaign {campaign_id}: {str(e)}"))
-            # Depending on policy, you might raise ValueError here or just log
-            # For now, raising an error as this is a critical part of maintaining data integrity for 'is_primary'
-            raise ValueError(f"Failed to update primary status of existing templates for campaign {campaign_id}: {str(e)}")
+            await db.rollback()
+            # Log error e (e.g., import logging; logging.error(f"DB Error: {e}"))
+            raise ValueError(f"Database error during email template finalization: {str(e)}")
 
-        # Step 2: Create the new EmailTemplate with is_primary = True
-        new_email_template_data = EmailTemplateCreate(
-            campaign_id=campaign_id,
-            name=f"AI Finalized Style - Campaign {campaign_id} - {final_user_prompt_text[:30]}...",
-            user_prompt=final_user_prompt_text,
-            subject_template=generated_subject,
-            body_template=generated_body
-            # is_primary will be set directly on the ORM model instance
-        )
-
-        db_email_template = EmailTemplate(
-            **new_email_template_data.model_dump(),
-            owner_id=current_user_schema.id, # Explicitly set owner_id
-            is_primary=True # Set the new template as primary
-        )
-
-        try:
-            db.add(db_email_template)
-            db.commit()
-            db.refresh(db_email_template)
-        except Exception as e:
-            db.rollback()
-            # Log error e
-            raise ValueError(f"Database error saving finalized email template: {str(e)}")
-
-        # --- Generate Personalized Preview ---
+        # --- Generate Personalized Preview (outside main transaction) ---
         preview_subject_str: Optional[str] = None
         preview_body_str: Optional[str] = None
 
         if contact_id_for_preview:
-            # Re-fetch contact, ensuring it's part of the campaign for relevance & security
-            contact_for_preview = db.query(Contact).filter(
-                Contact.id == contact_id_for_preview,
-                Contact.campaign_id == campaign_id, # Ensure contact is in the same campaign
-                Contact.owner_id == current_user_schema.id # Ensure contact belongs to the user
-            ).first()
+            # Fetch contact using db_get_contact_details
+            contact_for_preview = await db_get_contact_details(db, contact_id_for_preview)
 
-            if contact_for_preview:
+            # Ensure contact exists, belongs to the user, and is part of the campaign
+            if contact_for_preview and \
+               contact_for_preview.owner_id == current_user_schema.id and \
+               contact_for_preview.campaign_id == campaign_id:
                 try:
-                    personalization_serv = PersonalizationService(db=db)
+                    personalization_serv = PersonalizationService(db=db) # db is already a Session
                     preview_data = await personalization_serv.preview_personalized_email(
                         template_id=db_email_template.id,
                         contact_id=contact_id_for_preview
@@ -183,8 +167,10 @@ class AIChatService:
                 except Exception as e:
                     # Log this error, but don't let it fail the whole finalization.
                     print(f"Error generating personalized preview for template {db_email_template.id}, contact {contact_id_for_preview}: {str(e)}")
+            elif contact_for_preview:
+                print(f"Contact {contact_id_for_preview} found but does not belong to campaign {campaign_id} or current user.")
             else:
-                print(f"Contact {contact_id_for_preview} not found in campaign {campaign_id} or not owned by user for preview.")
+                print(f"Contact {contact_id_for_preview} not found for preview.")
 
         return {
             "email_template": db_email_template, # The ORM object
