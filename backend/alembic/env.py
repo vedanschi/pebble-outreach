@@ -4,6 +4,7 @@ import os
 # Add project root to sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
+
 from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 from alembic import context
@@ -26,6 +27,7 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = target_metadata_base.metadata
+
 
 
 def run_migrations_offline() -> None:
@@ -61,10 +63,13 @@ def run_migrations_online() -> None:
     """
     # Construct the final configuration dictionary for Alembic
     db_config = config.get_section(config.config_ini_section)
+b_config, # Use the modified dictionary
+
     db_config["sqlalchemy.url"] = settings.DATABASE_URL
 
     connectable = engine_from_config(
         db_config,
+
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )

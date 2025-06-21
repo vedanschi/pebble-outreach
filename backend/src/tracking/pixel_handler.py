@@ -4,6 +4,7 @@ from fastapi import APIRouter, Request, Depends
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
+
 from src.database import get_db
 from src.email_sending.service import EmailSendingService
 
@@ -36,6 +37,7 @@ async def handle_open_tracking_pixel_request_api(
             tracking_pixel_id=pixel_id,
             ip_address=client_ip
         )
+
         # Optionally log success/failure
     except Exception as e:
         print(f"TrackingAPI: Error recording email open for {pixel_id}: {e}")

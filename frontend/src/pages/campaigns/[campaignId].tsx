@@ -156,6 +156,7 @@ const CampaignDetailPage: React.FC = () => {
         </button>
       </div>
     </div>
+
   );
 };
 

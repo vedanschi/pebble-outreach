@@ -47,10 +47,12 @@ app.include_router(llm_routes.router, prefix="/api/v1/llm", tags=["LLM"])
 app.include_router(user_routes.router, prefix="/api/v1/users", tags=["Users"])
 app.include_router(ai_chat_routes.router, prefix="/api/v1/ai-chat", tags=["AI Chat & Email Style"])
 
+
 # Health check/root endpoint
 @app.get("/")
 async def root():
     return {"message": "Welcome to the Sales Automation Platform API"}
+
 
 # Optionally, add a health check endpoint for monitoring
 @app.get("/api/v1/health", tags=["Health"])
