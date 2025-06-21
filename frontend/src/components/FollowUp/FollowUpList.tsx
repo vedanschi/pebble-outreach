@@ -2,11 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { fetchFollowUps } from '../../utils/api';
 
 interface FollowUp {
-    id: number;
-    subject: string;
-    body: string;
-    delay: number;
+    id: number | string;
+    subject?: string;
+    body?: string;
+    delay?: number;
     createdAt?: string;
+    message?: string;
+    delayInDays?: number;
 }
 
 interface FollowUpListProps {
@@ -50,8 +52,8 @@ const FollowUpList: React.FC<FollowUpListProps> = ({ campaignId }) => {
                 <ul className="space-y-2">
                     {followUps.map((followUp) => (
                         <li key={followUp.id} className="border rounded p-3 bg-purple-50">
-                            <div className="font-bold">{followUp.subject}</div>
-                            <div className="text-sm text-gray-600 mb-1">Delay: {followUp.delay} day(s)</div>
+                            <div className="font-bold">{followUp.subject || followUp.message}</div>
+                            <div className="text-sm text-gray-600 mb-1">Delay: {followUp.delay ?? followUp.delayInDays} day(s)</div>
                             <div className="text-gray-700 whitespace-pre-line mb-1">{followUp.body}</div>
                             {followUp.createdAt && (
                                 <div className="text-xs text-gray-400">Created: {new Date(followUp.createdAt).toLocaleString()}</div>

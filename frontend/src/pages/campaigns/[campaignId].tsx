@@ -62,7 +62,6 @@ const CampaignDetailPage: React.FC = () => {
       {/* CSV Upload Section */}
       <section className="mb-8">
         <h2 className="text-xl font-semibold mb-2">Upload Contacts (CSV)</h2>
-        {/* Ensure CSVUploadForm accepts campaignId as prop */}
         <CSVUploadForm campaignId={parsedCampaignId} />
       </section>
 
@@ -103,11 +102,9 @@ const CampaignDetailPage: React.FC = () => {
         </div>
         {showFollowUpForm && (
           <div className="mb-4">
-            {/* Ensure FollowUpForm accepts campaignId as prop */}
             <FollowUpForm campaignId={parsedCampaignId} onSubmit={() => setShowFollowUpForm(false)} />
           </div>
         )}
-        {/* Ensure FollowUpList accepts campaignId as prop */}
         <FollowUpList campaignId={parsedCampaignId} />
       </section>
 

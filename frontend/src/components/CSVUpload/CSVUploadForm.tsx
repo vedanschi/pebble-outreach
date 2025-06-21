@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-interface CSVUploadFormProps {
+export interface CSVUploadFormProps {
   campaignId: number;
 }
 

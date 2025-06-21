@@ -7,9 +7,11 @@ interface FollowUpFormProps {
 }
 
 interface FollowUpData {
-    subject: string;
-    body: string;
-    delay: number;
+    subject?: string;
+    body?: string;
+    delay?: number;
+    message?: string;
+    delayInDays?: number;
 }
 
 const FollowUpForm: React.FC<FollowUpFormProps> = ({ campaignId, onSubmit, initialData }) => {
@@ -27,7 +29,7 @@ const FollowUpForm: React.FC<FollowUpFormProps> = ({ campaignId, onSubmit, initi
         const { name, value } = e.target;
         setFollowUpData((prev) => ({
             ...prev,
-            [name]: name === 'delay' ? Number(value) : value,
+            [name]: name === 'delay' || name === 'delayInDays' ? Number(value) : value,
         }));
     };
 
@@ -52,7 +54,7 @@ const FollowUpForm: React.FC<FollowUpFormProps> = ({ campaignId, onSubmit, initi
                     type="text"
                     id="subject"
                     name="subject"
-                    value={followUpData.subject}
+                    value={followUpData.subject || ''}
                     onChange={handleChange}
                     required
                     className="w-full border rounded px-2 py-1"
@@ -63,7 +65,7 @@ const FollowUpForm: React.FC<FollowUpFormProps> = ({ campaignId, onSubmit, initi
                 <textarea
                     id="body"
                     name="body"
-                    value={followUpData.body}
+                    value={followUpData.body || ''}
                     onChange={handleChange}
                     required
                     className="w-full border rounded px-2 py-1"
@@ -76,7 +78,7 @@ const FollowUpForm: React.FC<FollowUpFormProps> = ({ campaignId, onSubmit, initi
                     type="number"
                     id="delay"
                     name="delay"
-                    value={followUpData.delay}
+                    value={followUpData.delay ?? followUpData.delayInDays ?? 0}
                     onChange={handleChange}
                     required
                     min={0}
