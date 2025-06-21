@@ -24,6 +24,10 @@ backend/dist/
 backend/build/
 backend/*.egg-info/
 
+# Alembic migration files (keep versions/ if you want to track migrations)
+backend/alembic/versions/
+backend/alembic/versions/*
+
 # Database
 *.sqlite3
 *.sqlite3-journal
@@ -48,6 +52,16 @@ ENV/
 *.bak
 *.orig
 *~
+
+# Python bytecode
+*.pyc
+*.pyo
+
+# Jupyter Notebooks
+*.ipynb_checkpoints
+
+# Local dev/test artifacts
+backend/test.db
 
 # OS specific files
 .DS_Store
