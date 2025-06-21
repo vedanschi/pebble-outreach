@@ -2,6 +2,7 @@
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 from typing import Optional
+from datetime import datetime
 
 try:
     from src.models.user_models import User as UserORM, UserResponse, UserUpdate
@@ -11,11 +12,11 @@ except ImportError:
     class UserORM:
         id: int; email: str; full_name: Optional[str]
         user_role: Optional[str]; user_company_name: Optional[str]
-        is_active: bool; created_at: datetime.datetime; updated_at: datetime.datetime # from UserResponse
+        is_active: bool; created_at: datetime; updated_at: datetime # from UserResponse
     class UserResponse:
         id: int; email: str; full_name: Optional[str]
         user_role: Optional[str]; user_company_name: Optional[str]
-        is_active: bool; created_at: datetime.datetime; updated_at: datetime.datetime
+        is_active: bool; created_at: datetime; updated_at: datetime
     class UserUpdate:
         full_name: Optional[str] = None
         user_role: Optional[str] = None
@@ -23,14 +24,14 @@ except ImportError:
         is_active: Optional[bool] = None
 
     async def db_get_user_by_id(db: Session, user_id: int) -> Optional[UserORM]:
-        if user_id == 1: return UserORM(id=1, email="user@example.com", full_name="Test User", user_role="agent", user_company_name="Test Inc", is_active=True, created_at=datetime.datetime.utcnow(), updated_at=datetime.datetime.utcnow()) # type: ignore
+        if user_id == 1: return UserORM(id=1, email="user@example.com", full_name="Test User", user_role="agent", user_company_name="Test Inc", is_active=True, created_at=datetime.utcnow(), updated_at=datetime.utcnow()) # type: ignore
         return None
     async def db_update_user(db: Session, user_id: int, user_update_data: UserUpdate) -> Optional[UserORM]:
         if user_id == 1: return UserORM(id=1, email="user@example.com",
                                       full_name=user_update_data.full_name or "Test User Updated",
                                       user_role=user_update_data.user_role or "agent",
                                       user_company_name=user_update_data.user_company_name or "Test Inc",
-                                      is_active=True, created_at=datetime.datetime.utcnow(), updated_at=datetime.datetime.utcnow()
+                                      is_active=True, created_at=datetime.utcnow(), updated_at=datetime.utcnow()
                                       ) # type: ignore
         return None
 

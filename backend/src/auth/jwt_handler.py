@@ -1,9 +1,13 @@
 # src/auth/jwt_handler.py
 import time
+import os
 import jwt # PyJWT library
 
-# These should be in environment variables / configuration
-JWT_SECRET = "YOUR_SUPER_SECRET_KEY" # Replace with a strong, random key
+# Load JWT secret from environment variable for security
+JWT_SECRET = os.getenv("JWT_SECRET")
+if not JWT_SECRET:
+    raise RuntimeError("JWT_SECRET environment variable not set! Please set it in your environment or .env file.")
+
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
