@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 
 try:
     from src.database import get_db
-    from src.followups.db_operations import db_record_email_open # Actual DB operation
+    # from src.followups.db_operations import db_record_email_open # REMOVE THIS
+    from src.email_sending.service import EmailSendingService # ADD THIS
 except ImportError:
     # Placeholders for robustness
     print("TrackingAPI: Could not import DB components. Using placeholders.")
@@ -43,19 +44,21 @@ async def handle_open_tracking_pixel_request_api(
     # print(f"TrackingAPI: Pixel request received for ID: {pixel_id} from IP: {client_ip}") # Optional: reduce noise
 
     try:
-        success = await db_record_email_open(
-            db=db,
+        email_service = EmailSendingService(db=db)
+        was_recorded = await email_service.record_email_opened(
             tracking_pixel_id=pixel_id,
-            opened_ip=client_ip
+            ip_address=client_ip
         )
-        # if success:
-            # print(f"TrackingAPI: Email open successfully recorded for pixel ID: {pixel_id}") # Optional: reduce noise
-        # else:
-            # print(f"TrackingAPI: Pixel ID not found or failed to record: {pixel_id}") # Optional: reduce noise
+        if was_recorded:
+            # Optional: log success, e.g., print(f"TrackingAPI: Successfully recorded open for tracking ID: {pixel_id}")
+            pass
+        else:
+            # Optional: log failure or ID not found, e.g., print(f"TrackingAPI: Failed to record open or tracking ID not found: {pixel_id}")
+            pass
             # Still return the image to avoid broken images in emails even if the ID is invalid.
     except Exception as e:
         # Log the error, but still return the image to avoid breaking client.
-        print(f"TrackingAPI: Error processing pixel ID {pixel_id}: {e}")
+        print(f"TrackingAPI: Error recording email open for {pixel_id}: {e}")
         # Consider more detailed logging for production.
 
     # Always return the 1x1 transparent PNG image.

@@ -1,5 +1,6 @@
 # backend/src/core/scheduler.py
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.triggers.interval import IntervalTrigger
 from typing import Optional
 from datetime import datetime, timedelta
@@ -114,7 +115,10 @@ def start_scheduler():
     """
     global scheduler
     if scheduler is None:
-        scheduler = AsyncIOScheduler(timezone="UTC")
+        jobstores = {
+            'default': SQLAlchemyJobStore(url=settings.DATABASE_URL)
+        }
+        scheduler = AsyncIOScheduler(jobstores=jobstores, timezone="UTC")
 
         # Follow-up processing job - every 10 minutes
         scheduler.add_job(

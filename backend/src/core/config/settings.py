@@ -27,6 +27,13 @@ class Settings(BaseSettings):
     SMTP_SENDER_EMAIL: str
     SMTP_USE_TLS: bool = True
 
+    # Cloudflare R2 Settings (S3 compatible)
+    R2_BUCKET_NAME: Optional[str] = None
+    R2_ACCOUNT_ID: Optional[str] = None
+    R2_ACCESS_KEY_ID: Optional[str] = None
+    R2_SECRET_ACCESS_KEY: Optional[str] = None
+    R2_ENDPOINT_URL: Optional[str] = None # e.g., https://<ACCOUNT_ID>.r2.cloudflarestorage.com
+
     class Config:
         env_file = ".env"
 

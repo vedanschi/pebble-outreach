@@ -1,114 +1,186 @@
-# AI-Powered Outreach Application Backend
+# AI-Powered Outreach Platform
 
 ## Overview
 
-This project is the backend for an AI-powered email outreach application, similar in concept to tools like Woodpecker.io and Instantly.io. It allows users to manage campaigns, import contacts via CSV, generate personalized email templates using Large Language Models (LLMs) based on user prompts, send emails (including automated follow-ups), and track email opens. The primary goal is to leverage AI to customize and personalize outreach efforts effectively.
+The AI-Powered Outreach Platform is a comprehensive solution designed to streamline and enhance email marketing campaigns. It empowers users to manage campaigns, import contacts via CSV, leverage AI to generate personalized email styles through an interactive chat interface, and automate email sending. The platform also includes features for follow-up sequences and basic email tracking.
+
+This full-stack application combines a Python FastAPI backend with a Next.js (React) frontend, deployed on Render and Vercel respectively, offering a modern and scalable tool for intelligent email outreach.
+
+## Core Features
+
+- **User Authentication**: Secure signup and login functionality using JWT.
+- **Campaign Management**: Create, list, and manage outreach campaigns.
+- **Contact Import**: Easily import contacts into campaigns via CSV file upload.
+- **AI-Powered Email Style Generation**: Interactive chat interface to collaboratively define email tone, style, and key messages with an AI assistant.
+- **Personalized Email Template Creation**: Generate and store email templates (supporting `{{placeholder}}` variables) based on AI chat interactions or direct prompts.
+- **Automated Email Sending**: Send personalized emails to campaign contacts using the defined templates.
+- **Follow-Up Automation**: Define rules for automated follow-up emails based on conditions (e.g., not opened, not clicked). (Backend logic in place, frontend UI for management is a future enhancement).
+- **Email Open Tracking**: Basic tracking of email open events using a pixel.
+- **(Backend Ready, Frontend UI Future)**: Click tracking, detailed analytics, user profile management.
 
 ## Tech Stack
 
-### Backend
-*   **Language:** Python 3.8+
-*   **Framework:** FastAPI
-*   **Database:** PostgreSQL
-*   **ORM:** SQLAlchemy
-*   **Authentication:** JWT (JSON Web Tokens) with Passlib for password hashing
-*   **Scheduling:** APScheduler (for follow-ups and other background tasks)
-*   **Email Sending:** SMTP (using `aiosmtplib`)
-*   **AI Integration:** Designed for integration with LLMs like OpenAI's GPT series.
-*   **Data Validation:** Pydantic
+**Backend:**
+- Python 3.9+
+- FastAPI (for RESTful APIs)
+- SQLAlchemy (ORM for database interaction)
+- PostgreSQL (Relational Database)
+- Alembic (Database migrations)
+- Pydantic (Data validation and settings management)
+- APScheduler (Background tasks, e.g., for follow-up processing)
+- JWT (JSON Web Tokens for authentication)
+- Integration with Large Language Models (LLMs) like OpenAI GPT (API key provided by user)
+- `aiosmtplib` (for asynchronous email sending)
 
-### Frontend (User's Choice)
-*   **Framework:** Next.js (React) has been indicated as the preferred choice.
+**Frontend:**
+- Next.js (React Framework)
+- TypeScript
+- Axios (for API communication)
+- Tailwind CSS (for styling - *assumption, please verify/update*)
 
-## Getting Started / Backend Setup
+**Deployment:**
+- Backend: Render (or similar PaaS)
+- Frontend: Vercel
 
-These instructions will guide you through setting up and running the backend server locally.
+## Getting Started
 
 ### Prerequisites
-*   Python 3.8 or higher
-*   PostgreSQL server installed and running
-*   Access to an SMTP server (for sending emails)
-*   An API key for an LLM provider (e.g., OpenAI) if using the AI email generation feature.
 
-### 1. Clone the Repository
+- Python 3.9 or higher
+- Node.js (v16.x or higher recommended) & npm or yarn
+- PostgreSQL server (local or remote)
+- Git
+
+### Clone the Repository
+
 ```bash
-# git clone <repository_url> # Replace with your repo URL
-# cd <repository_name>
+git clone <your-repository-url>
+cd <your-repository-directory>
 ```
 
-### 2. Create a Virtual Environment
-It's highly recommended to use a virtual environment:
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scriptsctivate
-```
+## Backend Setup
 
-### 3. Install Dependencies
-Install all required Python packages:
-```bash
-pip install -r requirements.txt
-```
+1.  **Navigate to Backend Directory**:
+    ```bash
+    cd backend
+    ```
 
-### 4. Set Up Environment Variables
-Create a `.env` file in the root of the backend project (e.g., within the `src` directory or project root, depending on how `pydantic-settings` is configured - typically project root). This file will store your configuration secrets and settings.
+2.  **Create and Activate Virtual Environment**:
+    ```bash
+    python -m venv venv
+    source venv/bin/activate  # On Windows: venv\Scripts\activate
+    ```
 
-**Important:** Add `.env` to your `.gitignore` file to prevent committing secrets.
+3.  **Install Dependencies**:
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-Fill the `.env` file with the following (replace placeholder values with your actual settings):
+4.  **Environment Variables**:
+    - Copy the example environment file (if one exists) or create a `.env` file in the `backend/` directory.
+    - Populate it with the following required variables:
+      ```env
+      # backend/.env
+      DATABASE_URL="postgresql+asyncpg://user:password@host:port/dbname" # Your PostgreSQL connection string
+      JWT_SECRET="your_strong_random_jwt_secret"                       # Generate a strong secret key
+      OPENAI_API_KEY="sk-your_openai_api_key"                          # Your OpenAI API key
 
-```env
-# Database Configuration
-DATABASE_URL="postgresql://user:password@host:port/dbname"
+      # SMTP Settings (e.g., for SendGrid, Mailgun, or Gmail for testing)
+      SMTP_HOST="smtp.example.com"
+      SMTP_PORT=587
+      SMTP_USER="your_smtp_username"
+      SMTP_PASSWORD="your_smtp_password"
+      SMTP_SENDER_EMAIL="noreply@example.com" # Your default sender email
+      SMTP_USE_TLS=True
 
-# JWT Authentication
-JWT_SECRET="YOUR_VERY_STRONG_RANDOM_JWT_SECRET_KEY" # Generate a strong secret key
-# JWT_ALGORITHM="HS256" # Already set in code, but can be configurable
-# ACCESS_TOKEN_EXPIRE_MINUTES=30 # Already set in code, but can be configurable
+      # Application Base URL (for links in emails, tracking pixels)
+      APP_BASE_URL="http://localhost:8000" # For local development
 
-# OpenAI API Key (for LLM email generation)
-OPENAI_API_KEY="sk-YOUR_OPENAI_API_KEY"
+      # Optional: Cloudflare R2 (if CSVs/file storage is moved to R2 later)
+      # R2_BUCKET_NAME=""
+      # R2_ACCOUNT_ID=""
+      # R2_ACCESS_KEY_ID=""
+      # R2_SECRET_ACCESS_KEY=""
+      # R2_ENDPOINT_URL=""
+      ```
 
-# SMTP Server Configuration (for sending emails)
-SMTP_HOST="your.smtp.host.com"
-SMTP_PORT=587 # Or 465 for SSL
-SMTP_USER="your_smtp_username"
-SMTP_PASSWORD="your_smtp_password"
-SMTP_SENDER_EMAIL="your_sender_email@example.com" # Default 'From' address
-SMTP_USE_TLS="true" # Or "false"
+5.  **Database Setup**:
+    - Ensure your PostgreSQL server is running and accessible.
+    - Create a new database for the application if you haven't already.
+    - Update the `DATABASE_URL` in your `.env` file accordingly.
+    - Run Alembic migrations to create/update the database schema:
+      ```bash
+      # Make sure you are in the backend/ directory with venv activated
+      alembic upgrade head
+      ```
 
-# Application Base URL (for tracking pixel URLs)
-APP_BASE_URL="http://localhost:8000" # Change for development/production
-```
-*(Note: The application needs to be configured to load these from the `.env` file, typically using `pydantic-settings` in a `core/config.py` module.)*
+6.  **Running the Backend Locally**:
+    ```bash
+    # From the backend/ directory
+    uvicorn src.main:app --reload --port 8000
+    ```
+    The backend API should now be running at `http://localhost:8000`.
 
-### 5. Database Setup
-The SQL schema files are located in the `database/schema/` directory. You need to execute these against your PostgreSQL database to create the necessary tables.
-1.  Ensure your PostgreSQL server is running and you can connect to it.
-2.  Create a new database for the application if you haven't already.
-3.  Run the SQL files in order (e.g., `001_...sql`, `002_...sql`, etc.) using a PostgreSQL client like `psql` or a GUI tool.
-    *   **Important:** Review `database/schema/005_create_sent_emails_table.sql` and ensure the `triggered_by_rule_id` field and its index are included, as this was a guided modification during development.
+## Frontend Setup
 
-*(For a more robust setup, consider using a migration tool like Alembic, which can be configured based on the SQLAlchemy ORM models.)*
+1.  **Navigate to Frontend Directory**:
+    ```bash
+    cd frontend
+    ```
 
-### 6. Running the FastAPI Application
-Once the environment variables are set and the database is ready, you can run the FastAPI application using Uvicorn:
-```bash
-# Assuming your FastAPI app instance is in `src.main.app`
-uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
-```
-*   `--reload`: Enables auto-reload during development. Remove for production.
-*   The application should now be accessible at `http://localhost:8000` (or your `APP_BASE_URL`).
-*   API documentation will typically be available at `http://localhost:8000/docs` (Swagger UI) and `http://localhost:8000/redoc`.
+2.  **Install Dependencies**:
+    ```bash
+    npm install
+    # OR
+    # yarn install
+    ```
 
-## API Endpoint Summary
+3.  **Environment Variables**:
+    - Copy `frontend/.env.local.example` to `frontend/.env.local` (if the example file exists).
+    - Create or update `frontend/.env.local` with the following:
+      ```env
+      # frontend/.env.local
+      NEXT_PUBLIC_API_BASE_URL="http://localhost:8000" # Points to your local backend
+      ```
 
-The backend provides a comprehensive set of APIs for managing the outreach application:
+4.  **Running the Frontend Locally**:
+    ```bash
+    npm run dev
+    # OR
+    # yarn dev
+    ```
+    The frontend application should now be running, typically at `http://localhost:3000`.
 
-*   **Authentication (`/auth`):** Signup, Login (JWT token-based).
-*   **Users (`/users`):** Get and update current user's profile (name, role, company).
-*   **Campaigns (`/campaigns`):** CRUD operations for campaigns, CSV contact upload, triggering campaign sending.
-*   **LLM Email Generation (`/llm`):** Generate personalized email templates for campaigns using AI prompts.
-*   **Follow-up Rules (`/followup-rules`):** CRUD operations for defining automated follow-up email rules.
-*   **Tracking (`/track`):** Endpoint for tracking email opens via a pixel.
+## Key API Endpoints
 
-Refer to the API documentation (`/docs` or `/redoc` when the server is running) for detailed request/response schemas for each endpoint.
+The backend exposes a RESTful API. Interactive API documentation (Swagger UI) is available at `/docs` and ReDoc at `/redoc` when the backend is running.
+
+Key functional groups include:
+- `/auth/` (signup, login)
+- `/users/me/` (user profile)
+- `/campaigns/` (CRUD for campaigns)
+- `/campaigns/campaigns/upload` (CSV upload to create campaign & contacts - *path may need review for redundancy*)
+- `/campaigns/{campaign_id}/send` (Initiate campaign sending)
+- `/api/v1/ai-chat/conversation` (AI chat interaction)
+- `/api/v1/ai-chat/finalize-style` (Finalize AI-generated style and create template)
+- `/followup-rules/` (CRUD for follow-up rules)
+- `/track/open/{tracking_id}.png` (Email open tracking pixel)
+- `/llm/generate-campaign-template/` (Direct template generation via LLM)
+
+
+## Deployment
+
+**Backend (Render):**
+- The backend is configured for deployment on Render using the `render.yaml` file.
+- Connect your Git repository to a new "Web Service" on Render.
+- Set the Build Command: `pip install --upgrade pip && pip install -r backend/requirements.txt && alembic -c backend/alembic.ini upgrade head` (or as defined in `render.yaml`).
+- Set the Start Command: `uvicorn backend.src.main:app --host 0.0.0.0 --port $PORT` (or as defined in `render.yaml`).
+- Configure all necessary environment variables (from the Backend Setup section) in the Render service dashboard.
+- Render will also provision a PostgreSQL database if defined in `render.yaml`; its connection string will be injected as `DATABASE_URL`.
+
+**Frontend (Vercel):**
+- Connect your Git repository to a new Project on Vercel.
+- Vercel should automatically detect it as a Next.js application.
+- Set the Build Command (usually default): `next build` or `npm run build`.
+- Output Directory (usually default): `.next`.
+- Configure the `NEXT_PUBLIC_API_BASE_URL` environment variable in the Vercel project settings to point to your live Render backend URL.
