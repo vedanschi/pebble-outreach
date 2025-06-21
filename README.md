@@ -12,7 +12,7 @@ This full-stack application combines a Python FastAPI backend with a Next.js (Re
 - **Campaign Management**: Create, list, and manage outreach campaigns.
 - **Contact Import**: Easily import contacts into campaigns via CSV file upload.
 - **AI-Powered Email Style Generation**: Interactive chat interface to collaboratively define email tone, style, and key messages with an AI assistant.
-- **Personalized Email Template Creation**: Generate and store email templates (supporting `{{placeholder}}` variables) based on AI chat interactions or direct prompts.
+- **Personalized Email Template Creation**: Generate and store email templates based on AI chat interactions or direct prompts.
 - **Automated Email Sending**: Send personalized emails to campaign contacts using the defined templates.
 - **Follow-Up Automation**: Define rules for automated follow-up emails based on conditions (e.g., not opened, not clicked). (Backend logic in place, frontend UI for management is a future enhancement).
 - **Email Open Tracking**: Basic tracking of email open events using a pixel.
@@ -36,10 +36,10 @@ This full-stack application combines a Python FastAPI backend with a Next.js (Re
 - Next.js (React Framework)
 - TypeScript
 - Axios (for API communication)
-- Tailwind CSS (for styling - *assumption, please verify/update*)
+- Tailwind CSS (for styling)
 
 **Deployment:**
-- Backend: Render (or similar PaaS)
+- Backend: Render
 - Frontend: Vercel
 
 ## Getting Started
